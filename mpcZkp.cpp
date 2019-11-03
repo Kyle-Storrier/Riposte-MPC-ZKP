@@ -43,22 +43,23 @@ void sendData(int sender, int receiver, int data, string label) {
 
 // Perform Du-Attalah multiplication between a bit and an integer.
 int* DuAttalahMultiplication(int x0, bool b0, int x1, bool b1)  {
+    srand(time(NULL));
     int* results = new int[2];
 
     // P2 generates random values D0, d0, D1, d1 and alpha
-    int D0 = rand() && 0xFF; // TODO: Replace rand
+    int D0 = rand() && 0xFFFF; // TODO: Replace rand
     generateData(2, D0, "D_0");
 
-    int D1 = rand() && 0xFF; // TODO: Replace rand
+    int D1 = rand() && 0xFFFF; // TODO: Replace rand
     generateData(2, D1, "D1");
 
-    int d0 = rand() && 0xFF; // TODO: Replace rand
+    int d0 = rand() && 0xFFFF; // TODO: Replace rand
     generateData(2, d0, "d_0");
 
-    int d1 = rand() && 0xFF; // TODO: Replace rand
+    int d1 = rand() && 0xFFFF; // TODO: Replace rand
     generateData(2, d1, "d_1");
 
-    int alpha = rand() && 0xFF;  // TODO: Replace rand
+    int alpha = rand() && 0xFFFF;  // TODO: Replace rand
     generateData(2, alpha, "alpha");
 
     // P2 calculates c0 and c1.
@@ -93,35 +94,66 @@ int* DuAttalahMultiplication(int x0, bool b0, int x1, bool b1)  {
     return results;
 }
 
-// vector<TranscriptEntry>* mpcFirstStage(int CW, bool b0, bool b1) {
-//     srand(time(NULL)); // Replace rand and srand with a secure PRG.
+void printTranscriptEntry(TranscriptEntry t) {
+    if(t.generated) {
+        cout << "Party " << t.sender << " generated " << t.label << " = " << t.data;
+    } else {
+        cout << "Party " << t.sender << " sent " << t.label << " = " << t.data << " to Party " << t.receiver;
+    }
+    cout << endl;
+}
 
-//     int p0Index = 0;
-//     int p1Index = 0;
-//     int p2Index = 0;
+void printTranscript(int party) {
+    for(unsigned long  i = 0; i < transcripts[party].size(); i++) {
+        printTranscriptEntry(transcripts[party].at(i));
+    }
+}
 
-//     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
-//     int tmp0 = /*PRG goes here +*/ b0 * CW;
-//     int L0 = (tmp0 >> (32/2)) & 0xFFFF;
-//     int R0 = tmp0  & 0xFFFF;
+int* mpcFirstStage(int CW, bool b0, bool b1) {
+    srand(time(NULL)); // Replace rand and srand with a secure PRG.
 
-//     // P_1 computes L_1 || R_1 = G(seed_1) + b_1 * CW
-//     int tmp1 = /*PRG goes here +*/ b1 * CW;
-//     int L1 = (tmp1 >> (32/2)) & 0xFFFF;
-//     int R1 = tmp1  & 0xFFFF;
+    // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
+    int tmp0 = /*PRG goes here +*/ b0 * CW;
+    int L0 = (tmp0 >> (32/2)) & 0xFFFF;
+    int R0 = tmp0  & 0xFFFF;
 
-//     // (1 - b)
-//     int bNot0 = ~b0;
-//     int bNot1 = b1;
+    // P_1 computes L_1 || R_1 = G(seed_1) + b_1 * CW
+    int tmp1 = /*PRG goes here +*/ b1 * CW;
+    int L1 = (tmp1 >> (32/2)) & 0xFFFF;
+    int R1 = tmp1  & 0xFFFF;
 
-//     // Use Du-Attalah multiplication to compute shares (1 - b) * L + b * R
-//     // P0 starts with L0 and bNot0
-//     // P1 starts with L1 and bNot1
+    // (1 - b)
+    int bNot0 = ~b0;
+    int bNot1 = b1;
 
+    // Use Du-Attalah multiplication to compute shares (1 - b) * L + b * R
+    int* bNotLShares = DuAttalahMultiplication(L0, bNot0, L1, bNot1);
+    int* bRShares = DuAttalahMultiplication(R0, b0, R1, b1);
+    int correctedLeftSideShares[2];
+    correctedLeftSideShares[0] = bNotLShares[0] ^ bRShares[0];
+    correctedLeftSideShares[1] = bNotLShares[1] ^ bRShares[1];
+
+    // Use Du-Attalah multiplication to compute shares b * L + (1 - b) * R
+    int* bNotRShares = DuAttalahMultiplication(R0, bNot0, R1, bNot1);
+    int* bLShares = DuAttalahMultiplication(L0, b0, L1, b1);
+    int* correctedRightSideShares = new int[2];
+    correctedRightSideShares[0] = bNotRShares[0] ^ bLShares[0];
+    correctedRightSideShares[1] = bNotRShares[1] ^ bLShares[1];
+
+    // P0 and P1 reveal their shares of the corrected left side and calculate the result.
+    sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
+    sendData(1, 0, correctedLeftSideShares[1], "Corrected left side");
+
+    int correctedLeftSide = correctedLeftSideShares[0] ^ correctedLeftSideShares[1];
+
+    // Cleanup
+    delete[] bNotLShares;
+    delete[] bRShares;
+    delete[] bNotRShares;
+    delete[] bLShares;
     
-
-//     return transcripts;
-// }
+    return correctedRightSideShares; // Output the corrected right side shares to be used as shares of the seeds for the next layer.
+}
 
 int main() {
     int x0 = 0xFD;
@@ -132,5 +164,14 @@ int main() {
     cout << "Expected: " << ((x0 ^ x1) *(b0 ^ b1)) << endl
         << "Actual: " << (result[0] ^ result[1]) << endl;
     
+    cout << "Party 0:" << endl;
+    printTranscript(0);
+    cout << endl;
+    cout << "Party 1:" << endl;
+    printTranscript(1);
+    cout << endl;
+    cout << "Party 2:" << endl;
+    printTranscript(2);
+
     delete[] result;
 }
