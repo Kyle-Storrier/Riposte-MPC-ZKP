@@ -8,15 +8,14 @@
 using namespace std;
 
 struct TranscriptEntry {
-    bool generated; // True for data which is being randomly generated
-    int sender; // The sender of the data (same as receiver for generated data)
-    int receiver; // The receiver of the data
-    int data; // The data
-    string label;
+    bool generated; // True for data which is being randomly generated.
+    int sender; // The party sending the data (same as receiver for generated data).
+    int receiver; // The party receiving the data.
+    int data; // The data.
+    string label; // A label mainly intended for debugging and human readable output.
 };
 
 // The transcript of the MPC.
-// TranscriptEntry transcripts[3][128]; /*Determine the correct number for this*/
 vector<TranscriptEntry> transcripts[3];
 
 void generateData(int party, int data, string label) {
@@ -47,19 +46,19 @@ int* DuAttalahMultiplication(int x0, bool b0, int x1, bool b1)  {
     int* results = new int[2];
 
     // P2 generates random values D0, d0, D1, d1 and alpha
-    int D0 = rand() & 0xFFFF; // TODO: Replace rand
+    int D0 = rand() & 0xFF; // TODO: Replace rand
     generateData(2, D0, "D_0");
 
-    int D1 = rand() & 0xFFFF; // TODO: Replace rand
+    int D1 = rand() & 0xFF; // TODO: Replace rand
     generateData(2, D1, "D1");
 
-    int d0 = rand() & 0xFFFF; // TODO: Replace rand
+    int d0 = rand() & 0xFF; // TODO: Replace rand
     generateData(2, d0, "d_0");
 
-    int d1 = rand() & 0xFFFF; // TODO: Replace rand
+    int d1 = rand() & 0xFF; // TODO: Replace rand
     generateData(2, d1, "d_1");
 
-    int alpha = rand() & 0xFFFF;  // TODO: Replace rand
+    int alpha = rand() & 0xFF;  // TODO: Replace rand
     generateData(2, alpha, "alpha");
 
     // P2 calculates c0 and c1.
@@ -111,18 +110,14 @@ void printTranscript(int party) {
 
 int* mpcFirstStage(int CW, bool b0, bool b1) {
     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
-    int tmp0 = /*PRG goes here. 0xFFFFFFFF is a dummy value.*/ 0xFFFFFFFF ^ (b0 * CW);
+    int tmp0 = /*PRG goes here. 0xFFFFFFFF is a dummy value.*/ 0x345678 + (b0 * CW);
     int L0 = (tmp0 >> (32/2)) & 0xFFFF;
     int R0 = tmp0  & 0xFFFF;
 
     // P_1 computes L_1 || R_1 = G(seed_1) + b_1 * CW
-    int tmp1 = /*PRG goes here. 0xAAAAAAAA is a dummy value.*/ 0xAAAAAAAA ^ (b1 * CW);
+    int tmp1 = /*PRG goes here. 0xAAAAAAAA is a dummy value.*/ 0xCDEF11 + (b1 * CW);
     int L1 = (tmp1 >> (32/2)) & 0xFFFF;
     int R1 = tmp1  & 0xFFFF;
-
-    // (1 - b)
-    int bNot0 = ~b0;
-    int bNot1 = b1;
 
     // Use Du-Attalah multiplication to compute shares (1 - b) * L + b * R and to compute shares of b * L + (1 - b) * R
     int* bLShares = DuAttalahMultiplication(L0, b0, L1, b1);
@@ -133,38 +128,35 @@ int* mpcFirstStage(int CW, bool b0, bool b1) {
     bNotLShares[1] = L1 - bLShares[1];
     // Compute (1 - b) * R as R - b * R
     int bNotRShares[2];
-    bNotRShares[0] = R0 ^ bRShares[0];
-    bNotRShares[1] = R1 ^ bRShares[1];
-    // int* bNotLShares = DuAttalahMultiplication(L0, bNot0, L1, bNot1);
-    // int* bNotRShares = DuAttalahMultiplication(R0, bNot0, R1, bNot1);
+    bNotRShares[0] = R0 - bRShares[0];
+    bNotRShares[1] = R1 - bRShares[1];
 
     int correctedLeftSideShares[2];
-    correctedLeftSideShares[0] = bNotRShares[0] ^ bLShares[0];
-    correctedLeftSideShares[1] = bNotRShares[1] ^ bLShares[1];
+    correctedLeftSideShares[0] = bNotRShares[0] + bLShares[0];
+    correctedLeftSideShares[1] = bNotRShares[1] + bLShares[1];
 
     int* correctedRightSideShares = new int[2];
-    correctedRightSideShares[0] = bNotLShares[0] ^ bRShares[0];
-    correctedRightSideShares[1] = bNotLShares[1] ^ bRShares[1];
+    correctedRightSideShares[0] = bNotLShares[0] + bRShares[0];
+    correctedRightSideShares[1] = bNotLShares[1] + bRShares[1];
 
     // P0 and P1 reveal their shares of the corrected left side and calculate the result.
     sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
     sendData(1, 0, correctedLeftSideShares[1], "Corrected left side");
 
-    int correctedLeftSide = correctedLeftSideShares[0] ^ correctedLeftSideShares[1];
+    int correctedLeftSide = correctedLeftSideShares[0] + correctedLeftSideShares[1];
     printf("Expected: 0\tActual: %d\n", correctedLeftSide);
 
     // Cleanup
-    // delete[] bNotLShares;
     delete[] bRShares;
-    // delete[] bNotRShares;
     delete[] bLShares;
     
     return correctedRightSideShares; // Output the corrected right side shares to be used as shares of the seeds for the next layer.
 }
 
 int main() {
-    srand(time(0)); // Replace rand and srand with a secure PRG.
+    srand(time(0)); // TODO: Replace rand and srand with a secure PRG.
 
+    // Demo: Multiply 443 by the bit 1 using Du-Attalah Muliplication, and print out the complete set of transcripts.
     int x0 = 0xFD;
     int x1 = 0xBE;
     bool b0 = 1;
@@ -172,10 +164,6 @@ int main() {
     int *result = DuAttalahMultiplication(x0, b0, x1, b1);
     cout << "Expected: " << ((x0 + x1) * (b0 + b1)) << endl
         << "Actual: " << (result[0] + result[1]) << endl;
-
-    // int* result = mpcFirstStage(0x55551111, 0, 1);
-    // cout << "Expected: " << 0x4444 << '\t'
-    //     << "Actual: " << (result[0] ^ result[1]) << endl << endl;
     
     cout << "Party 0:" << endl;
     printTranscript(0);
