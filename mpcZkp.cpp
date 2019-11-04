@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <stdlib.h>
+#include<time.h> 
 
 
 using namespace std;
@@ -43,28 +44,27 @@ void sendData(int sender, int receiver, int data, string label) {
 
 // Perform Du-Attalah multiplication between a bit and an integer.
 int* DuAttalahMultiplication(int x0, bool b0, int x1, bool b1)  {
-    srand(time(NULL));
     int* results = new int[2];
 
     // P2 generates random values D0, d0, D1, d1 and alpha
-    int D0 = rand() && 0xFFFF; // TODO: Replace rand
+    int D0 = rand() & 0xFFFF; // TODO: Replace rand
     generateData(2, D0, "D_0");
 
-    int D1 = rand() && 0xFFFF; // TODO: Replace rand
+    int D1 = rand() & 0xFFFF; // TODO: Replace rand
     generateData(2, D1, "D1");
 
-    int d0 = rand() && 0xFFFF; // TODO: Replace rand
+    int d0 = rand() & 0xFFFF; // TODO: Replace rand
     generateData(2, d0, "d_0");
 
-    int d1 = rand() && 0xFFFF; // TODO: Replace rand
+    int d1 = rand() & 0xFFFF; // TODO: Replace rand
     generateData(2, d1, "d_1");
 
-    int alpha = rand() && 0xFFFF;  // TODO: Replace rand
+    int alpha = rand() & 0xFFFF;  // TODO: Replace rand
     generateData(2, alpha, "alpha");
 
     // P2 calculates c0 and c1.
-    int c0 = (D0 * d1) ^ alpha;
-    int c1 = (D1*d0) ^ alpha;
+    int c0 = (D0 * d1) + alpha;
+    int c1 = (D1*d0) - alpha;
 
     // P2 sends D0, d0, c0 to P0
     sendData(2, 0, D0, "D_0");
@@ -76,21 +76,21 @@ int* DuAttalahMultiplication(int x0, bool b0, int x1, bool b1)  {
     sendData(2, 1, c1, "c_1 = D_1 * d_0 - alpha");
 
     // P0 Computes X0 = x0 + D0 and Y0 = b0 + d0 and sends them to P1
-    int X0 = x0 ^ D0;
-    int Y0 = b0 ^ d0;
+    int X0 = x0 + D0;
+    int Y0 = b0 + d0;
 
     sendData(0, 1, X0, "X_0 = x_0 + D_0");
     sendData(0, 1, Y0, "Y_0 = b_0 + d_0");
 
     // P1 computes X1 = x1 + D1 and Y1 = b1 + d1 and sends them to P0
-    int X1 = x1 ^ D1;
-    int Y1 = b1 ^ d1;
+    int X1 = x1 + D1;
+    int Y1 = b1 + d1;
 
     sendData(1, 0, X1, "X_1 = x_1 + D_1");
     sendData(1, 0, Y1, "Y_1 = b_1 + d_1");
 
-    results[0] = (x0 * (b0 ^ Y1)) ^ (d0 * X1) ^ c0;
-    results[1] = (x1 * (b1 ^ Y0)) ^ (d1 * X0) ^ c1;
+    results[0] = (x0 * (b0 + Y1)) - (d0 * X1) + c0;
+    results[1] = (x1 * (b1 + Y0)) - (d1 * X0) + c1;
     return results;
 }
 
@@ -110,8 +110,6 @@ void printTranscript(int party) {
 }
 
 int* mpcFirstStage(int CW, bool b0, bool b1) {
-    srand(time(NULL)); // Replace rand and srand with a secure PRG.
-
     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
     int tmp0 = /*PRG goes here. 0xFFFFFFFF is a dummy value.*/ 0xFFFFFFFF ^ (b0 * CW);
     int L0 = (tmp0 >> (32/2)) & 0xFFFF;
@@ -165,9 +163,19 @@ int* mpcFirstStage(int CW, bool b0, bool b1) {
 }
 
 int main() {
-    int* result = mpcFirstStage(0x55551111, 0, 1);
-    cout << "Expected: " << 0x4444 << '\t'
-        << "Actual: " << (result[0] ^ result[1]) << endl << endl;
+    srand(time(0)); // Replace rand and srand with a secure PRG.
+
+    int x0 = 0xFD;
+    int x1 = 0xBE;
+    bool b0 = 1;
+    bool b1 = 0;
+    int *result = DuAttalahMultiplication(x0, b0, x1, b1);
+    cout << "Expected: " << ((x0 + x1) * (b0 + b1)) << endl
+        << "Actual: " << (result[0] + result[1]) << endl;
+
+    // int* result = mpcFirstStage(0x55551111, 0, 1);
+    // cout << "Expected: " << 0x4444 << '\t'
+    //     << "Actual: " << (result[0] ^ result[1]) << endl << endl;
     
     cout << "Party 0:" << endl;
     printTranscript(0);
