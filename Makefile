@@ -13,6 +13,9 @@ dpflowmc: dpf.cpp dpf.h prg.h LowMC.h  aes.h block.h
 dpfaes: dpf.cpp dpf.h prg.h LowMC.h  aes.h block.h 
 	$(CXX) $(CXXFLAGS) -DAES dpf.h LowMC.h prg.h aes.h block.h key.h LowMC.cpp -o dpfaes dpf.cpp $(LIBS)
 
+zkplowmc: mpcZkp.cpp dpf.h prg.h LowMC.h  aes.h block.h 
+	$(CXX) $(CXXFLAGS) -DLOWMC dpf.h LowMC.h prg.h aes.h block.h key.h LowMC.cpp -o mpczkplowmc mpcZkp.cpp $(LIBS)
+
 clean:
-	rm -f test dpflowmc dpfaes
+	rm -f test dpflowmc dpfaes mpczkplowmc
 
