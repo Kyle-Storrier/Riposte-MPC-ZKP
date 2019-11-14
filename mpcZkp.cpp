@@ -10,6 +10,8 @@ using namespace std;
 
 const block multiplicationConstants[2] = {0x0000, 0xFFFF};
 
+#define L 0
+#define R 1
 
 struct TranscriptEntry {
     bool generated; // True for data which is being randomly generated.
@@ -50,19 +52,22 @@ block* DuAttalahMultiplication(const block& x0, bool b0, const block& x1, bool b
     block* results = new block[2];
 
     // P2 generates random values D0, d0, D1, d1 and alpha
-    block D0 = rand() & 0xFFFF; // TODO: Replace rand
+    block D0;
+    arc4random_buf(&D0, sizeof(block));
     generateData(2, D0, "D_0");
 
-    block D1 = rand() & 0xFFFF; // TODO: Replace rand
+    block D1;
+    arc4random_buf(&D1, sizeof(block));
     generateData(2, D1, "D1");
 
-    bool d0 = rand() & 1; // TODO: Replace rand
+    bool d0 = arc4random();
     generateData(2, d0, "d_0");
 
-    bool d1 = rand() & 1; // TODO: Replace rand
+    bool d1 = arc4random();
     generateData(2, d1, "d_1");
 
-    block alpha = rand() & 0xFFFF;  // TODO: Replace rand
+    block alpha;
+    arc4random_buf(&alpha, sizeof(block));
     generateData(2, alpha, "alpha");
 
     // P2 calculates c0 and c1.
@@ -112,55 +117,59 @@ void printTranscript(int party) {
     }
 }
 
-// int* mpcFirstStage(int CW, bool b0, bool b1) {
-//     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
-//     int tmp0 = /*PRG goes here. 0xFFFFFFFF is a dummy value.*/ 0x345678 + (b0 * CW);
-//     int L0 = (tmp0 >> (32/2)) & 0xFFFF;
-//     int R0 = tmp0  & 0xFFFF;
+block* mpcFirstStage(LowMC key, block CW, bool b0, bool b1) {
+    // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
+    block expansion0[2];
+    // Call expansion(...) here
+    expansion0[L] = 0b11;
+    expansion0[L] ^= multiplicationConstants[b0] & CW;
+    expansion0[R] = 0b01;
+    expansion0[R] ^= multiplicationConstants[b0] & CW;
 
-//     // P_1 computes L_1 || R_1 = G(seed_1) + b_1 * CW
-//     int tmp1 = /*PRG goes here. 0xAAAAAAAA is a dummy value.*/ 0xCDEF11 + (b1 * CW);
-//     int L1 = (tmp1 >> (32/2)) & 0xFFFF;
-//     int R1 = tmp1  & 0xFFFF;
+    // P_1 computes L_1 || R_1 = G(seed_1) + b_1 * CW
+    block expansion1[2];
+    // Call expansion(...) here
+    expansion1[L] = 0b11;
+    expansion1[L] ^= multiplicationConstants[b1] & CW;
+    expansion1[R] = 0b10;
+    expansion1[R] ^= multiplicationConstants[b1] & CW;
 
-//     // Use Du-Attalah multiplication to compute shares (1 - b) * L + b * R and to compute shares of b * L + (1 - b) * R
-//     int* bLShares = DuAttalahMultiplication(L0, b0, L1, b1);
-//     int* bRShares = DuAttalahMultiplication(R0, b0, R1, b1);
-//     // Compute (1 - b) * L as L - b * L
-//     int bNotLShares[2];
-//     bNotLShares[0] = L0 ^ bLShares[0];
-//     bNotLShares[1] = L1 ^ bLShares[1];
-//     // Compute (1 - b) * R as R - b * R
-//     int bNotRShares[2];
-//     bNotRShares[0] = R0 ^ bRShares[0];
-//     bNotRShares[1] = R1 ^ bRShares[1];
+    // Use Du-Attalah multiplication to compute shares (1 - b) * L + b * R and to compute shares of b * L + (1 - b) * R
+    block* bLShares = DuAttalahMultiplication(expansion0[L], b0, expansion1[L], b1); // L * b
+    block* bRShares = DuAttalahMultiplication(expansion0[R], b0, expansion1[R], b1); // R * b
+    // Compute (1 - b) * L as L - b * L
+    block bNotLShares[2];
+    bNotLShares[0] = expansion0[L] ^ bLShares[0];
+    bNotLShares[1] = expansion1[L] ^ bLShares[1];
+    // Compute (1 - b) * R as R - b * R
+    block bNotRShares[2];
+    bNotRShares[0] = expansion0[R] ^ bRShares[0];
+    bNotRShares[1] = expansion1[R] ^ bRShares[1];
 
-//     int correctedLeftSideShares[2];
-//     correctedLeftSideShares[0] = bNotRShares[0] ^ bLShares[0];
-//     correctedLeftSideShares[1] = bNotRShares[1] ^ bLShares[1];
+    block correctedLeftSideShares[2];
+    correctedLeftSideShares[0] = bNotLShares[0] ^ bRShares[0];
+    correctedLeftSideShares[1] = bNotLShares[1] ^ bRShares[1];
 
-//     int* correctedRightSideShares = new int[2];
-//     correctedRightSideShares[0] = bNotLShares[0] ^ bRShares[0];
-//     correctedRightSideShares[1] = bNotLShares[1] ^ bRShares[1];
+    block* correctedRightSideShares = new block[2];
+    correctedRightSideShares[0] = bNotRShares[0] ^ bLShares[0];
+    correctedRightSideShares[1] = bNotRShares[1] ^ bLShares[1];
 
-//     // P0 and P1 reveal their shares of the corrected left side and calculate the result.
-//     sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
-//     sendData(1, 0, correctedLeftSideShares[1], "Corrected left side");
+    // P0 and P1 reveal their shares of the corrected left side and calculate the result.
+    sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
+    sendData(1, 0, correctedLeftSideShares[1], "Corrected left side");
 
-//     int correctedLeftSide = correctedLeftSideShares[0] + correctedLeftSideShares[1];
-//     printf("Expected: 0\tActual: %d\n", correctedLeftSide);
+    block correctedLeftSide = correctedLeftSideShares[0] ^ correctedLeftSideShares[1];
+    printf("Expected: 0\tActual: %ld\n", correctedLeftSide.to_ulong());
 
-//     // Cleanup
-//     delete[] bRShares;
-//     delete[] bLShares;
+    // Cleanup
+    delete[] bRShares;
+    delete[] bLShares;
     
-//     return correctedRightSideShares; // Output the corrected right side shares to be used as shares of the seeds for the next layer.
-// }
+    return correctedRightSideShares; // Output the corrected right side shares to be used as shares of the seeds for the next layer.
+}
 
 
 int main() {
-    srand(time(0)); // TODO: Replace rand and srand with a secure PRG.
-
     typedef __m256i __mX;
     LowMC key(1);
 
@@ -169,30 +178,9 @@ int main() {
     dpf_key<__mX, nitems> dpfkey[2] = { 0 }; 
     gen(key, 2 , dpfkey);
 
-    // 
-
-    // Demo: Multiply 0x43 by the bit 1 using Du-Attalah Muliplication, and print out the complete set of transcripts.
-    block x0  = 0xFD;
-    block x1 = 0xBE;
-    bool b0 = 1;
-    bool b1 = 0;
-    block expectedResult = ((x0 ^ x1) & multiplicationConstants[b0 ^ b1]);
-    block *result = DuAttalahMultiplication(x0, b0, x1, b1);
-    cout << "Expected: " << expectedResult.to_ulong() << endl
-        << "Actual: " << (result[0] ^ result[1]).to_ulong() << endl;
-
-    x0  = 0xFD;
-    x1 = 0xBE;
-    b0 = 1;
-    b1 = 1;
-    expectedResult = ((x0 ^ x1) & multiplicationConstants[b0 ^ b1]);
-    result = DuAttalahMultiplication(x0, b0, x1, b1);
-    cout << "Expected: " << expectedResult.to_ulong() << endl
-        << "Actual: " << (result[0] ^ result[1]).to_ulong() << endl;
-
-     // int* result = mpcFirstStage(0b11111110111111011100110010101011, 0, 1);
-    // cout << "Expected: " << 0x1234 << '\t'
-    //     << "Actual: " << (result[0] + result[1]) << endl << endl;
+    // Apply layer one of the proof generation MPC protocol
+    block* result = mpcFirstStage(key, 0b11, 1, 0);
+    cout << "Results: " << (result[0] ^ result[1]).to_ulong() << endl << endl;
     
     cout << "Party 0:" << endl;
     printTranscript(0);
@@ -205,3 +193,23 @@ int main() {
 
     delete[] result;
 }
+
+
+// Demo: Multiply 0x43 by the bit 1 using Du-Attalah Muliplication, and print out the complete set of transcripts.
+// block x0  = 0xFD;
+// block x1 = 0xBE;
+// bool b0 = 1;
+// bool b1 = 0;
+// block expectedResult = ((x0 ^ x1) & multiplicationConstants[b0 ^ b1]);
+// block *result = DuAttalahMultiplication(x0, b0, x1, b1);
+// cout << "Expected: " << expectedResult.to_ulong() << endl
+//     << "Actual: " << (result[0] ^ result[1]).to_ulong() << endl;
+
+// x0  = 0xFD;
+// x1 = 0xBE;
+// b0 = 1;
+// b1 = 1;
+// expectedResult = ((x0 ^ x1) & multiplicationConstants[b0 ^ b1]);
+// result = DuAttalahMultiplication(x0, b0, x1, b1);
+// cout << "Expected: " << expectedResult.to_ulong() << endl
+//     << "Actual: " << (result[0] ^ result[1]).to_ulong() << endl;
