@@ -8,7 +8,7 @@
 
 using namespace std;
 
-const block multiplicationConstants[2] = {0x0000, 0xFFFF};
+block multiplicationConstants[2];
 
 #define L 0
 #define R 1
@@ -117,22 +117,27 @@ void printTranscript(int party) {
     }
 }
 
-block* mpcFirstStage(LowMC key, block CW, bool b0, bool b1) {
+block* mpcFirstStage(LowMC key, block CW, block seed0, bool b0, block seed1, bool b1) {
     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
     block expansion0[2];
-    // Call expansion(...) here
-    expansion0[L] = 0b11;
-    expansion0[L] ^= multiplicationConstants[b0] & CW;
-    expansion0[R] = 0b01;
-    expansion0[R] ^= multiplicationConstants[b0] & CW;
+    uint8_t exp0Bits[2];
+    expand(key, seed0, expansion0, exp0Bits);
+    // expansion0[L] = 0b11;
+    expansion0[L] ^= multiplicationConstants[exp0Bits[0]] & CW;
+    // expansion0[R] = 0b01;
+    expansion0[R] ^= multiplicationConstants[exp0Bits[1]] & CW;
 
     // P_1 computes L_1 || R_1 = G(seed_1) + b_1 * CW
     block expansion1[2];
-    // Call expansion(...) here
-    expansion1[L] = 0b11;
-    expansion1[L] ^= multiplicationConstants[b1] & CW;
-    expansion1[R] = 0b10;
-    expansion1[R] ^= multiplicationConstants[b1] & CW;
+    uint8_t exp1Bits[2];
+    expand(key, seed1, expansion1, exp1Bits);
+    // expansion1[L] = 0b11;
+    expansion1[L] ^= multiplicationConstants[exp1Bits[0]] & CW;
+    // expansion1[R] = 0b10;
+    expansion1[R] ^= multiplicationConstants[exp1Bits[1]] & CW;
+
+    cout << "Left Side: " << (expansion0[L] ^ expansion1[L]).b.to_string() << endl
+        << "Right Side: " << (expansion0[R] ^ expansion1[R]).b.to_string() << endl << endl;
 
     // Use Du-Attalah multiplication to compute shares (1 - b) * L + b * R and to compute shares of b * L + (1 - b) * R
     block* bLShares = DuAttalahMultiplication(expansion0[L], b0, expansion1[L], b1); // L * b
@@ -155,11 +160,11 @@ block* mpcFirstStage(LowMC key, block CW, bool b0, bool b1) {
     correctedRightSideShares[1] = bNotRShares[1] ^ bLShares[1];
 
     // P0 and P1 reveal their shares of the corrected left side and calculate the result.
-    sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
+   sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
     sendData(1, 0, correctedLeftSideShares[1], "Corrected left side");
 
     block correctedLeftSide = correctedLeftSideShares[0] ^ correctedLeftSideShares[1];
-    printf("Expected: 0\tActual: %ld\n", correctedLeftSide.to_ulong());
+    printf("Expected: 0\tActual: %s\n", correctedLeftSide.b.to_string().c_str());
 
     // Cleanup
     delete[] bRShares;
@@ -173,14 +178,25 @@ int main() {
     typedef __m256i __mX;
     LowMC key(1);
 
+
+    // Define the constant all 1s and all 0s blocks used for multiplication by boolean values.
+    block *allZeros = new block();
+    block *allOnes = new block();
+    allOnes->set();
+    multiplicationConstants[0] = *allZeros;
+    multiplicationConstants[1] = *allOnes;
+    // [2] = {
+    // "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    // "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+
     // The prover must generate the DPF keys and then the zero-knowledge proof of its correctness.
     const size_t nitems   =  1ULL << 15; // TODO: Change this value to reflect the actual number of items.
     dpf_key<__mX, nitems> dpfkey[2] = { 0 }; 
     gen(key, 2 , dpfkey);
 
     // Apply layer one of the proof generation MPC protocol
-    block* result = mpcFirstStage(key, 0b11, 1, 0);
-    cout << "Results: " << (result[0] ^ result[1]).to_ulong() << endl << endl;
+    block* result = mpcFirstStage(key, dpfkey[0].cw[0], dpfkey[0].root, 1 /* dpfkey[0].t[0][0]*/, dpfkey[1].root, 0 /*dpfkey[1].t[0][0]*/);
+    cout << "Results: " << (result[0] ^ result[1]).b.to_string() << endl << endl;
     
     cout << "Party 0:" << endl;
     printTranscript(0);
@@ -192,6 +208,8 @@ int main() {
     printTranscript(2);
 
     delete[] result;
+    // delete multiplicationConstants[0];
+    // delete multiplicationConstants[1];
 }
 
 
