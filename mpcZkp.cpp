@@ -302,10 +302,14 @@ void mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index,
     // // Set the new values for the bits.
     //  bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
     //  bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
-    b0Shares[0] = seed0Shares[0].get_lsb();
-    b0Shares[1] = seed0Shares[1].get_lsb();
-    b1Shares[0] = seed1Shares[0].get_lsb();
-    b1Shares[1] = seed1Shares[1].get_lsb();
+    b0Shares[0] = 0;
+    b0Shares[1] = exp0Bits[directionShares[0] ^ directionShares[1]] ^ (dpfkey[0].t[index][directionShares[0] ^ directionShares[1]] & (b0Shares[0] ^ b0Shares[1]));
+    b1Shares[0] = 0;
+    b1Shares[1] = exp1Bits[directionShares[0] ^ directionShares[1]] ^ (dpfkey[1].t[index][directionShares[0] ^ directionShares[1]] & (b1Shares[0] ^ b1Shares[1]));
+    // b0Shares[0] = seed0Shares[0].get_lsb();
+    // b0Shares[1] = seed0Shares[1].get_lsb();
+    // b1Shares[0] = seed1Shares[0].get_lsb();
+    // b1Shares[1] = seed1Shares[1].get_lsb();
 
     printf("Expected: 0\nActual: %s\n", correctedLeftSide.b.to_string().c_str());
 }
@@ -334,13 +338,16 @@ int main() {
     uint8_t bit0Shares[2];
     uint8_t bit1Shares[2];
     mpcFirstStage(key, dpfkey, dpfkey[0].root, dpfkey[0].root.get_lsb(), dpfkey[1].root, dpfkey[1].root.get_lsb(), seed0Shares, bit0Shares, seed1Shares, bit1Shares);
-    cout << endl
-        << "Bit 0: " << (bit0Shares[0] ^ bit0Shares[1]) << endl
-        << "Bit 1: " << (bit1Shares[0] ^ bit1Shares[1]) << endl
-        << "Seed 0: " << (seed0Shares[0] ^ seed0Shares[1]).b.to_string() << endl
-        << "Seed 1: " << (seed1Shares[0] ^ seed1Shares[1]).b.to_string() << endl
-        << endl;
-    mpcInnerStage(key, dpfkey, 1, seed0Shares, bit0Shares, seed1Shares, bit1Shares);
+    for(ssize_t i = 1; i < depth; i++) {
+        cout << endl
+            << "Bit 0: " << (bit0Shares[0] ^ bit0Shares[1]) << endl
+            << "Bit 1: " << (bit1Shares[0] ^ bit1Shares[1]) << endl
+            << "Seed 0: " << (seed0Shares[0] ^ seed0Shares[1]).b.to_string() << endl
+            << "Seed 1: " << (seed1Shares[0] ^ seed1Shares[1]).b.to_string() << endl
+            << endl;
+        mpcInnerStage(key, dpfkey, i, seed0Shares, bit0Shares, seed1Shares, bit1Shares);
+    }
+    
     cout << endl << endl << " --------------------------------------------------------------------------------\n\n";
 
     // Initialize the state information based on the key.
