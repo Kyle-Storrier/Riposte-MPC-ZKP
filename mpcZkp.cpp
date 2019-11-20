@@ -194,7 +194,7 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
     uint8_t expansion0BitShares[2][2];  // First dimension is party 0 or 1, second dimension is L or R.
     uint8_t expansion1BitShares[2][2];  // First dimension is party 0 or 1, second dimension is L or R.
 
-    //***********************************************
+    //**********************************************************************************************
     // TODO: Replace this code with the MPC expansion code.
     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
     block expansion0Hidden[2];
@@ -203,19 +203,17 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
     // cout << "Seed 0:\nLeft Expansion: " << (expansion0Hidden[L]).b.to_string() << endl << "Right Expansion: " << (expansion0Hidden[R]).b.to_string() << endl;
 
     // Secret share the expansion's left side.
-    // arc4random_buf(&expansion0Shares[0][L], sizeof(block));
-    expansion0Shares[0][L] = expansion0Hidden[L];
+    arc4random_buf(&expansion0Shares[0][L], sizeof(block));
     expansion0Shares[1][L] = expansion0Shares[0][L] ^ expansion0Hidden[L];
-    expansion0BitShares[0][L] = expansion0BitShares[0][L]; // arc4random() & 0x01;
+    expansion0BitShares[0][L] = arc4random() & 0x01;
     expansion0BitShares[1][L] = exp0Bits[L] ^ expansion0BitShares[0][L];
 
     // Secret share the expansion's right side.
-    // arc4random_buf(&expansion0Shares[0][R], sizeof(block));
-    expansion0Shares[0][R] = expansion0Hidden[R];
+    arc4random_buf(&expansion0Shares[0][R], sizeof(block));
     expansion0Shares[1][R] = expansion0Hidden[R] ^ expansion0Shares[0][R];
-    expansion0BitShares[0][R] = 0; // arc4random() & 0x01;
+    expansion0BitShares[0][R] = arc4random() & 0x01;
     expansion0BitShares[1][R] = exp0Bits[R] ^ expansion0BitShares[0][R];
-    //***********************************************
+    //**********************************************************************************************
 
 
     expansion0Shares[0][L] ^= multiplicationConstants[b0Shares[0]] & CW;
@@ -224,7 +222,7 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
     expansion0Shares[1][R] ^= multiplicationConstants[b0Shares[1] ^ 1] & CW;
 
 
-    //***********************************************
+    //**********************************************************************************************
     // TODO: Replace this code with the MPC expansion code.
     block expansion1Hidden[2];
     uint8_t exp1BitsHidden[2];
@@ -232,19 +230,17 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
 
     // cout << "Seed 1:\nLeft Expansion: " << (expansion1Hidden[L]).b.to_string() << endl << "Right Expansion: " << (expansion1Hidden[R]).b.to_string() << endl;
     // Secret share the expansion's left side.
-    // arc4random_buf(&expansion1Shares[0][L], sizeof(block));
-    expansion1Shares[0][L] = 0;
+    arc4random_buf(&expansion1Shares[0][L], sizeof(block));
     expansion1Shares[1][L] = expansion1Hidden[L] ^ expansion1Shares[0][L];
+    expansion1BitShares[0][L] = arc4random() & 0x01;
+    expansion1BitShares[1][L] = exp1BitsHidden[L] ^ expansion1BitShares[0][L];
 
-    expansion1BitShares[0][L] = 0; // arc4random() & 0x01; //0; //expansion1Shares[0][L].get_lsb();
-    expansion1BitShares[1][L] = exp1BitsHidden[L] ^ expansion1BitShares[0][L]; //expansion1Shares[1][L].get_lsb();
     // Secret share the expansion's right side.
-    // arc4random_buf(&expansion1Shares[0][R], sizeof(block));
-    expansion1Shares[0][R] = 0;
+    arc4random_buf(&expansion1Shares[0][R], sizeof(block));
     expansion1Shares[1][R] = expansion1Hidden[R] ^ expansion1Shares[0][R];
-    expansion1BitShares[0][R] = 0; //arc4random() & 0x01; //0; //expansion1Shares[0][R].get_lsb();
-    expansion1BitShares[1][R] = exp1BitsHidden[R] ^ expansion1BitShares[0][R]; // expansion1Shares[1][R].get_lsb();
-    //***********************************************
+    expansion1BitShares[0][R] = arc4random() & 0x01;
+    expansion1BitShares[1][R] = exp1BitsHidden[R] ^ expansion1BitShares[0][R];
+    //**********************************************************************************************
 
     expansion1Shares[0][L] ^= multiplicationConstants[b1Shares[0]] & CW;
     expansion1Shares[1][L] ^= multiplicationConstants[b1Shares[1] ^ 1] & CW;
@@ -263,13 +259,36 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
     // Use Du-Attalah multiplication to compute shares (1 - b) * L_0 + b * R_0 and to compute shares of b * L_0 + (1 - b) * R_0
     // TODO: Do this without the hardcoded 0 shares.
     block* bL0Shares = DuAttalahMultiplication(expansion0Shares[0][L], directionShares[0], expansion0Shares[1][L], directionShares[1]); // L_0 * direction
-    block* bNotL0Shares = DuAttalahMultiplication(expansion0Shares[0][L], directionShares[0], expansion0Shares[1][L], directionShares[1] ^ 1); // L_0 * (direction - 1)
+
+    //block* bNotL0Shares = DuAttalahMultiplication(expansion0Shares[0][L], directionShares[0], expansion0Shares[1][L], directionShares[1] ^ 1); // L_0 * (direction - 1)
+    // L_0 * (direction - 1) = L_0 * direction - L_0
+    block bNotL0Shares[2];
+    bNotL0Shares[0] = bL0Shares[0] ^ expansion0Shares[0][L];
+    bNotL0Shares[1] = bL0Shares[1] ^ expansion0Shares[1][L];    
+
     block* bL1Shares = DuAttalahMultiplication(expansion1Shares[0][L], directionShares[0], expansion1Shares[1][L], directionShares[1]); // L_1 * direction
-    block* bNotL1Shares = DuAttalahMultiplication(expansion1Shares[0][L], directionShares[0], expansion1Shares[1][L], directionShares[1] ^ 1); // L_1 * (direction - 1)
+
+    // block* bNotL1Shares = DuAttalahMultiplication(expansion1Shares[0][L], directionShares[0], expansion1Shares[1][L], directionShares[1] ^ 1); // L_1 * (direction - 1)
+    // L_1 * (direction - 1) = L_1 * direction - L_1
+    block bNotL1Shares[2];
+    bNotL1Shares[0] = bL1Shares[0] ^ expansion1Shares[0][L];
+    bNotL1Shares[1] = bL1Shares[1] ^ expansion1Shares[1][L];
+
     block* bR0Shares = DuAttalahMultiplication(expansion0Shares[0][R], directionShares[0], expansion0Shares[1][R], directionShares[1]); // R_0 * direction
-    block* bNotR0Shares = DuAttalahMultiplication(expansion0Shares[0][R], directionShares[0], expansion0Shares[1][R], directionShares[1] ^ 1); // R_0 * (direction - 1)
+
+    // block* bNotR0Shares = DuAttalahMultiplication(expansion0Shares[0][R], directionShares[0], expansion0Shares[1][R], directionShares[1] ^ 1); // R_0 * (direction - 1)
+    // R_0 * (direction - 1) = R_0 * direction - R_0
+    block bNotR0Shares[2];
+    bNotR0Shares[0] = bR0Shares[0] ^ expansion0Shares[0][R];
+    bNotR0Shares[1] = bR0Shares[1] ^ expansion0Shares[1][R];
+
     block* bR1Shares = DuAttalahMultiplication(expansion1Shares[0][R], directionShares[0], expansion1Shares[1][R], directionShares[1]); // R_1 * direction
-    block* bNotR1Shares = DuAttalahMultiplication(expansion1Shares[0][R], directionShares[0], expansion1Shares[1][R], directionShares[1] ^ 1); // R_1 * (direction - 1)
+
+    // block* bNotR1Shares = DuAttalahMultiplication(expansion1Shares[0][R], directionShares[0], expansion1Shares[1][R], directionShares[1] ^ 1); // R_1 * (direction - 1)
+    // R_1 * (direction - 1) = R_1 * direction - R_1
+    block bNotR1Shares[2];
+    bNotR1Shares[0] = bR1Shares[0] ^ expansion1Shares[0][R];
+    bNotR1Shares[1] = bR1Shares[1] ^ expansion1Shares[1][R];
 
     // Compute shares of the corrected left side.
     block correctedLeftSideShares[2];
