@@ -118,7 +118,7 @@ void printTranscript(int party) {
 }
 
 template <typename KEY_TYPE, size_t nitems, typename __mX>
-void mpcFirstStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], block seed0, uint8_t b0, block seed1, uint8_t b1, block* newSeed0Shares, uint8_t* newB0Shares, block* newSeed1Shares, uint8_t* newB1Shares) {
+block mpcFirstStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], block seed0, uint8_t b0, block seed1, uint8_t b1, block* newSeed0Shares, uint8_t* newB0Shares, block* newSeed1Shares, uint8_t* newB1Shares) {
     block CW = dpfkey[0].cw[0];
 
     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
@@ -174,23 +174,19 @@ void mpcFirstStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], block seed0, u
     newSeed1Shares[1] = bNotL1Shares[1] ^ bR1Shares[1];
 
     // // Set the new values for the bits.
-    newB0Shares[0] = 0;
-    newB0Shares[1] = exp0Bits[directionShares[0] ^ directionShares[1]] ^ (dpfkey[0].t[0][directionShares[0] ^ directionShares[1]] & b0);
-    newB1Shares[0] = 0;
-    newB1Shares[1] = exp1Bits[directionShares[0] ^ directionShares[1]] ^ (dpfkey[1].t[0][directionShares[0] ^ directionShares[1]] & b1);
-    //  bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
-    //  bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
-    // newB0Shares[0] = newSeed0Shares[0].get_lsb();
-    // newB0Shares[1] = newSeed0Shares[1].get_lsb();
-    // newB1Shares[0] = newSeed1Shares[0].get_lsb();
-    // newB1Shares[1] = newSeed1Shares[1].get_lsb();
+    // TODO: Do this properly using MPC.
+    newB0Shares[0] = (exp0Bits[0] & directionShares[0]) ^ (exp0Bits[0] & (!directionShares[1]));
+    newB0Shares[1] = (exp0Bits[1] & directionShares[0]) ^ (exp0Bits[1] & directionShares[1]) ^ (dpfkey[0].t[0][directionShares[0] ^ directionShares[1]] & b0);
+    newB1Shares[0] = (exp1Bits[0] & directionShares[0]) ^ (exp1Bits[0] & (!directionShares[1]));
+    newB1Shares[1] = (exp1Bits[0] & directionShares[0]) ^ (exp1Bits[0] & directionShares[1]) ^ (dpfkey[1].t[0][directionShares[0] ^ directionShares[1]] & b1);
 
 
     printf("Expected: 0\nActual: %s\n", correctedLeftSide.b.to_string().c_str());
+    return correctedLeftSide;
 }
 
 template <typename KEY_TYPE, size_t nitems, typename __mX>
-void mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index, block* seed0Shares, uint8_t* b0Shares, block* seed1Shares, uint8_t* b1Shares) {
+block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index, block* seed0Shares, uint8_t* b0Shares, block* seed1Shares, uint8_t* b1Shares) {
     block CW = dpfkey[0].cw[index];
 
     block expansion0Shares[2][2]; // First dimension is party 0 or 1, second dimension is L or R.
@@ -205,22 +201,20 @@ void mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index,
     uint8_t exp0Bits[2];
     expand(key, seed0Shares[0] ^ seed0Shares[1], expansion0Hidden, exp0Bits);
     // cout << "Seed 0:\nLeft Expansion: " << (expansion0Hidden[L]).b.to_string() << endl << "Right Expansion: " << (expansion0Hidden[R]).b.to_string() << endl;
+
     // Secret share the expansion's left side.
     // arc4random_buf(&expansion0Shares[0][L], sizeof(block));
-    // expansion0Shares[1][L] = expansion0Shares[0][L] ^ expansion0Hidden[L];
-    expansion0Shares[0][L] = 0;
-    expansion0Shares[1][L] = expansion0Hidden[L];
+    expansion0Shares[0][L] = expansion0Hidden[L];
+    expansion0Shares[1][L] = expansion0Shares[0][L] ^ expansion0Hidden[L];
+    expansion0BitShares[0][L] = expansion0BitShares[0][L]; // arc4random() & 0x01;
+    expansion0BitShares[1][L] = exp0Bits[L] ^ expansion0BitShares[0][L];
 
-    expansion0BitShares[0][L] = 0; //expansion0Shares[0][L].get_lsb();
-    expansion0BitShares[1][L] = exp0Bits[L]; // expansion0Shares[1][L].get_lsb();
     // Secret share the expansion's right side.
     // arc4random_buf(&expansion0Shares[0][R], sizeof(block));
-    // expansion0Shares[1][R] = expansion0Shares[0][R] ^ expansion0Hidden[R];
-    expansion0Shares[0][R] = 0;
-    expansion0Shares[1][R] = expansion0Hidden[R];
-
-    expansion0BitShares[0][R] = 0; //expansion0Shares[0][R].get_lsb();
-    expansion0BitShares[1][R] = exp0Bits[R]; //expansion0Shares[1][R].get_lsb();
+    expansion0Shares[0][R] = expansion0Hidden[R];
+    expansion0Shares[1][R] = expansion0Hidden[R] ^ expansion0Shares[0][R];
+    expansion0BitShares[0][R] = 0; // arc4random() & 0x01;
+    expansion0BitShares[1][R] = exp0Bits[R] ^ expansion0BitShares[0][R];
     //***********************************************
 
 
@@ -233,26 +227,23 @@ void mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index,
     //***********************************************
     // TODO: Replace this code with the MPC expansion code.
     block expansion1Hidden[2];
-    uint8_t exp1Bits[2];
-    expand(key, seed1Shares[0] ^ seed1Shares[1], expansion1Hidden, exp1Bits);
+    uint8_t exp1BitsHidden[2];
+    expand(key, seed1Shares[0] ^ seed1Shares[1], expansion1Hidden, exp1BitsHidden);
 
     // cout << "Seed 1:\nLeft Expansion: " << (expansion1Hidden[L]).b.to_string() << endl << "Right Expansion: " << (expansion1Hidden[R]).b.to_string() << endl;
     // Secret share the expansion's left side.
     // arc4random_buf(&expansion1Shares[0][L], sizeof(block));
-    // expansion1Shares[1][L] = expansion1Shares[0][L] ^ expansion1Hidden[L];
     expansion1Shares[0][L] = 0;
-    expansion1Shares[1][L] = expansion1Hidden[L];
+    expansion1Shares[1][L] = expansion1Hidden[L] ^ expansion1Shares[0][L];
 
-    expansion1BitShares[0][L] = 0; //expansion1Shares[0][L].get_lsb();
-    expansion1BitShares[1][L] = exp1Bits[L]; //expansion1Shares[1][L].get_lsb();
+    expansion1BitShares[0][L] = 0; // arc4random() & 0x01; //0; //expansion1Shares[0][L].get_lsb();
+    expansion1BitShares[1][L] = exp1BitsHidden[L] ^ expansion1BitShares[0][L]; //expansion1Shares[1][L].get_lsb();
     // Secret share the expansion's right side.
     // arc4random_buf(&expansion1Shares[0][R], sizeof(block));
-    // expansion1Shares[1][R] = expansion1Shares[0][R] ^ expansion1Hidden[R];
     expansion1Shares[0][R] = 0;
-    expansion1Shares[1][R] = expansion1Hidden[R];
-
-    expansion1BitShares[0][R] = 0; //expansion1Shares[0][R].get_lsb();
-    expansion1BitShares[1][R] = exp1Bits[R]; // expansion1Shares[1][R].get_lsb();
+    expansion1Shares[1][R] = expansion1Hidden[R] ^ expansion1Shares[0][R];
+    expansion1BitShares[0][R] = 0; //arc4random() & 0x01; //0; //expansion1Shares[0][R].get_lsb();
+    expansion1BitShares[1][R] = exp1BitsHidden[R] ^ expansion1BitShares[0][R]; // expansion1Shares[1][R].get_lsb();
     //***********************************************
 
     expansion1Shares[0][L] ^= multiplicationConstants[b1Shares[0]] & CW;
@@ -268,7 +259,7 @@ void mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index,
     directionShares[0] = expansion0BitShares[0][R] ^ expansion1BitShares[0][R];
     directionShares[1] = expansion0BitShares[1][R] ^ expansion1BitShares[1][R] ^ dpfkey[0].t[index][R];
 
-    cout << "Direction: " << (directionShares[0] ^ directionShares[1]) << "\tShould be: " << (exp1Bits[R] ^ exp0Bits[R] ^ dpfkey[0].t[index][R]) << endl;
+    cout << "Direction: " << (directionShares[0] ^ directionShares[1]) << endl;
     // Use Du-Attalah multiplication to compute shares (1 - b) * L_0 + b * R_0 and to compute shares of b * L_0 + (1 - b) * R_0
     // TODO: Do this without the hardcoded 0 shares.
     block* bL0Shares = DuAttalahMultiplication(expansion0Shares[0][L], directionShares[0], expansion0Shares[1][L], directionShares[1]); // L_0 * direction
@@ -300,18 +291,28 @@ void mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index,
     seed1Shares[1] = bNotL1Shares[1] ^ bR1Shares[1];
 
     // // Set the new values for the bits.
-    //  bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
-    //  bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
-    b0Shares[0] = 0;
-    b0Shares[1] = exp0Bits[directionShares[0] ^ directionShares[1]] ^ (dpfkey[0].t[index][directionShares[0] ^ directionShares[1]] & (b0Shares[0] ^ b0Shares[1]));
-    b1Shares[0] = 0;
-    b1Shares[1] = exp1Bits[directionShares[0] ^ directionShares[1]] ^ (dpfkey[1].t[index][directionShares[0] ^ directionShares[1]] & (b1Shares[0] ^ b1Shares[1]));
-    // b0Shares[0] = seed0Shares[0].get_lsb();
-    // b0Shares[1] = seed0Shares[1].get_lsb();
-    // b1Shares[0] = seed1Shares[0].get_lsb();
-    // b1Shares[1] = seed1Shares[1].get_lsb();
+    // TODO: Do this properly using MPC.
+    uint8_t newB0Shares[2];
+    newB0Shares[0] = 0;
+    newB0Shares[1] = expansion0BitShares[0][directionShares[0] ^ directionShares[1]]
+        ^ expansion0BitShares[1][directionShares[0] ^ directionShares[1]]
+        ^ (dpfkey[0].t[index][directionShares[0] ^ directionShares[1]] & (b0Shares[0] ^ b0Shares[1]));
+
+    uint8_t newB1Shares[2];
+    newB1Shares[0] = 0;
+    newB1Shares[1] = expansion1BitShares[0][directionShares[0] ^ directionShares[1]]
+        ^ expansion1BitShares[1][directionShares[0] ^ directionShares[1]]
+         ^ (dpfkey[1].t[index][directionShares[0] ^ directionShares[1]] & (b1Shares[0] ^ b1Shares[1]));
+
+    // Update the state for the next round.
+    b0Shares[0] = newB0Shares[0];
+    b0Shares[1] = newB0Shares[1];
+    b1Shares[0] = newB1Shares[0];
+    b1Shares[1] = newB1Shares[1];
 
     printf("Expected: 0\nActual: %s\n", correctedLeftSide.b.to_string().c_str());
+
+    return correctedLeftSide;
 }
 
 int main() {
@@ -337,84 +338,97 @@ int main() {
     block seed1Shares[2];
     uint8_t bit0Shares[2];
     uint8_t bit1Shares[2];
-    mpcFirstStage(key, dpfkey, dpfkey[0].root, dpfkey[0].root.get_lsb(), dpfkey[1].root, dpfkey[1].root.get_lsb(), seed0Shares, bit0Shares, seed1Shares, bit1Shares);
-    for(ssize_t i = 1; i < depth; i++) {
+    bool failed = false;
+    block result;
+    ssize_t index = 0;
+
+    result = mpcFirstStage(key, dpfkey, dpfkey[0].root, dpfkey[0].root.get_lsb(), dpfkey[1].root, dpfkey[1].root.get_lsb(), seed0Shares, bit0Shares, seed1Shares, bit1Shares);
+    failed = result.count() > 0;
+    for(ssize_t i = 1; i < depth && !failed; i++) {
         cout << endl
             << "Bit 0: " << (bit0Shares[0] ^ bit0Shares[1]) << endl
             << "Bit 1: " << (bit1Shares[0] ^ bit1Shares[1]) << endl
             << "Seed 0: " << (seed0Shares[0] ^ seed0Shares[1]).b.to_string() << endl
             << "Seed 1: " << (seed1Shares[0] ^ seed1Shares[1]).b.to_string() << endl
             << endl;
-        mpcInnerStage(key, dpfkey, i, seed0Shares, bit0Shares, seed1Shares, bit1Shares);
+        result = mpcInnerStage(key, dpfkey, i, seed0Shares, bit0Shares, seed1Shares, bit1Shares);
+        index = i;
+        failed = result.count() > 0;
+    }
+
+    if(failed) {
+        cout << "\nFailed at layer: " << index << endl;
+    } else {
+        cout << "\nValid" << endl;
     }
     
-    cout << endl << endl << " --------------------------------------------------------------------------------\n\n";
+    // cout << endl << endl << " --------------------------------------------------------------------------------\n\n";
 
-    // Initialize the state information based on the key.
-    block seed0 = dpfkey[0].root;
-    block seed1 = dpfkey[1].root;
-    uint8_t bit0 = dpfkey[0].root.get_lsb();
-    uint8_t bit1 = dpfkey[1].root.get_lsb();
-    block CW;
-    uint8_t direction;
+    // // Initialize the state information based on the key.
+    // block seed0 = dpfkey[0].root;
+    // block seed1 = dpfkey[1].root;
+    // uint8_t bit0 = dpfkey[0].root.get_lsb();
+    // uint8_t bit1 = dpfkey[1].root.get_lsb();
+    // block CW;
+    // uint8_t direction;
     
-    for(ssize_t i = 0; i < 2; i++) {
-        printf("Bit 0: %d\nBit 1: %d\n", bit0, bit1);
-        cout
-            << "Seed 0: " << seed0.b.to_string() << endl
-            << "Seed 1: " << seed1.b.to_string() << endl
-            << endl;
-        CW = dpfkey[1].cw[i];
+    // for(ssize_t i = 0; i < 3; i++) {
+    //     printf("Bit 0: %d\nBit 1: %d\n", bit0, bit1);
+    //     cout
+    //         << "Seed 0: " << seed0.b.to_string() << endl
+    //         << "Seed 1: " << seed1.b.to_string() << endl
+    //         << endl;
+    //     CW = dpfkey[1].cw[i];
 
-        // Expand seed 0.
-        block expansion0[2];
-        uint8_t exp0Bits[2];
-        expand(key, seed0, expansion0, exp0Bits);
-        // cout << "Seed0\nLeft expansion: " << expansion0[L].b.to_string() << endl << "Right expansion: " << expansion0[R].b.to_string() << endl;
-        expansion0[L] ^= multiplicationConstants[bit0 ^ 1] & CW;
-        expansion0[R] ^= multiplicationConstants[bit0 ^ 1] & CW;
+    //     // Expand seed 0.
+    //     block expansion0[2];
+    //     uint8_t exp0Bits[2];
+    //     expand(key, seed0, expansion0, exp0Bits);
+    //     // cout << "Seed0\nLeft expansion: " << expansion0[L].b.to_string() << endl << "Right expansion: " << expansion0[R].b.to_string() << endl;
+    //     expansion0[L] ^= multiplicationConstants[bit0 ^ 1] & CW;
+    //     expansion0[R] ^= multiplicationConstants[bit0 ^ 1] & CW;
 
-        // Expand seed 1.
-        block expansion1[2];
-        uint8_t exp1Bits[2];
-        expand(key, seed1, expansion1, exp1Bits);
-        // cout << "Seed1\nLeft expansion: " << expansion1[L].b.to_string() << endl << "Right expansion: " << expansion1[R].b.to_string() << endl;
-        expansion1[L] ^= multiplicationConstants[bit1 ^ 1] & CW;
-        expansion1[R] ^= multiplicationConstants[bit1 ^ 1] & CW;
+    //     // Expand seed 1.
+    //     block expansion1[2];
+    //     uint8_t exp1Bits[2];
+    //     expand(key, seed1, expansion1, exp1Bits);
+    //     // cout << "Seed1\nLeft expansion: " << expansion1[L].b.to_string() << endl << "Right expansion: " << expansion1[R].b.to_string() << endl;
+    //     expansion1[L] ^= multiplicationConstants[bit1 ^ 1] & CW;
+    //     expansion1[R] ^= multiplicationConstants[bit1 ^ 1] & CW;
 
-        direction = dpfkey[0].t[i][R] ^ exp0Bits[R] ^ exp1Bits[R]; // bit0 ^ bit1 ^ 1;
-        // printf("Layer: %ld\nDirection: %d\nB0: %d\nB1: %d\n\n", i, direction, bit0, bit1);
+    //     direction = dpfkey[0].t[i][R] ^ exp0Bits[R] ^ exp1Bits[R]; // bit0 ^ bit1 ^ 1;
+    //     // printf("Layer: %ld\nDirection: %d\nB0: %d\nB1: %d\n\n", i, direction, bit0, bit1);
 
-        // Conditional on the bit, flip the right and left sides.
-        block correctedLeft[2];
-        correctedLeft[0] = (expansion0[L] & multiplicationConstants[direction]) 
-            ^ (expansion0[R] & multiplicationConstants[direction ^ 1]);
-        correctedLeft[1] = (expansion1[L] & multiplicationConstants[direction])
-            ^ (expansion1[R] & multiplicationConstants[direction ^ 1]);
-        block correctedRight[2];
-        correctedRight[0] = (expansion0[R] & multiplicationConstants[direction])
-            ^ (expansion0[L] & multiplicationConstants[direction ^ 1]);
-        correctedRight[1] = (expansion1[R] & multiplicationConstants[direction])
-            ^ (expansion1[L] & multiplicationConstants[direction ^ 1]);
+    //     // Conditional on the bit, flip the right and left sides.
+    //     block correctedLeft[2];
+    //     correctedLeft[0] = (expansion0[L] & multiplicationConstants[direction]) 
+    //         ^ (expansion0[R] & multiplicationConstants[direction ^ 1]);
+    //     correctedLeft[1] = (expansion1[L] & multiplicationConstants[direction])
+    //         ^ (expansion1[R] & multiplicationConstants[direction ^ 1]);
+    //     block correctedRight[2];
+    //     correctedRight[0] = (expansion0[R] & multiplicationConstants[direction])
+    //         ^ (expansion0[L] & multiplicationConstants[direction ^ 1]);
+    //     correctedRight[1] = (expansion1[R] & multiplicationConstants[direction])
+    //         ^ (expansion1[L] & multiplicationConstants[direction ^ 1]);
 
-        cout << "Expected: 0\nActual: " << (correctedLeft[0] ^ correctedLeft[1]).b.to_string() << endl
-            << "Right Side: " << (correctedRight[0] ^ correctedRight[1]).b.to_string() << endl << endl;
-        if((correctedLeft[0] ^ correctedLeft[1]).count() != 0) {
-            cout << "Failed on layer " << i << endl;
-            break;
-        }
+    //     cout << "Expected: 0\nActual: " << (correctedLeft[0] ^ correctedLeft[1]).b.to_string() << endl
+    //         << "Right Side: " << (correctedRight[0] ^ correctedRight[1]).b.to_string() << endl << endl;
+    //     if((correctedLeft[0] ^ correctedLeft[1]).count() != 0) {
+    //         cout << "Failed on layer " << i << endl;
+    //         break;
+    //     }
 
-        if(i == depth - 1) {
-            cout << endl << "Final Verification\n"
-                << "Expected: 1\nActual: " << (correctedRight[0] ^ correctedRight[1]).b.to_string() << endl;
-        }
+    //     if(i == depth - 1) {
+    //         cout << endl << "Final Verification\n"
+    //             << "Expected: 1\nActual: " << (correctedRight[0] ^ correctedRight[1]).b.to_string() << endl;
+    //     }
 
-        // Update the state based on the generated values and the key.
-        bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
-        bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
-        seed0 = correctedRight[0];
-        seed1 = correctedRight[1];
-    }
+    //     // Update the state based on the generated values and the key.
+    //     bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
+    //     bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
+    //     seed0 = correctedRight[0];
+    //     seed1 = correctedRight[1];
+    // }
 
     // cout << "Party 0:" << endl;
     // printTranscript(0);
