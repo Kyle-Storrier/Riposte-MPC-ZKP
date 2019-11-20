@@ -117,116 +117,197 @@ void printTranscript(int party) {
     }
 }
 
-block* mpcFirstStage(LowMC key, block CW, block seed0, cwbits* b0, block seed1, cwbits* b1) {
+template <typename KEY_TYPE, size_t nitems, typename __mX>
+void mpcFirstStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], block seed0, uint8_t b0, block seed1, uint8_t b1, block* newSeed0Shares, uint8_t* newB0Shares, block* newSeed1Shares, uint8_t* newB1Shares) {
+    block CW = dpfkey[0].cw[0];
+
     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
     block expansion0[2];
     uint8_t exp0Bits[2];
     expand(key, seed0, expansion0, exp0Bits);
-    // expansion0[L] = 0b11;
-    expansion0[L] ^= multiplicationConstants[seed0.get_lsb()] & CW;
-    // expansion0[R] = 0b01;
-    expansion0[R] ^= multiplicationConstants[seed0.get_lsb()] & CW;
+    expansion0[L] ^= multiplicationConstants[b0 ^ 1] & CW;
+    expansion0[R] ^= multiplicationConstants[b0 ^ 1] & CW;
 
     // P_1 computes L_1 || R_1 = G(seed_1) + b_1 * CW
     block expansion1[2];
     uint8_t exp1Bits[2];
     expand(key, seed1, expansion1, exp1Bits);
-    // expansion1[L] = 0b11;
-    expansion1[L] ^= multiplicationConstants[seed1.get_lsb()] & CW;
-    // expansion1[R] = 0b10;
-    expansion1[R] ^= multiplicationConstants[seed1.get_lsb()] & CW;
+    expansion1[L] ^= multiplicationConstants[b1 ^ 1] & CW;
+    expansion1[R] ^= multiplicationConstants[b1 ^ 1] & CW;
 
     cout << "Left Side: " << (expansion0[L] ^ expansion1[L]).b.to_string() << endl
         << "Right Side: " << (expansion0[R] ^ expansion1[R]).b.to_string() << endl << endl;
 
-    // Use Du-Attalah multiplication to compute shares (1 - b) * L + b * R and to compute shares of b * L + (1 - b) * R
-    block* bLShares = DuAttalahMultiplication(expansion0[L], b0, expansion1[L], b1); // L * b
-    block* bRShares = DuAttalahMultiplication(expansion0[R], b0, expansion1[R], b1); // R * b
-    // Compute (1 - b) * L as L - b * L
-    block bNotLShares[2];
-    bNotLShares[0] = expansion0[L] ^ bLShares[0];
-    bNotLShares[1] = expansion1[L] ^ bLShares[1];
-    // Compute (1 - b) * R as R - b * R
-    block bNotRShares[2];
-    bNotRShares[0] = expansion0[R] ^ bRShares[0];
-    bNotRShares[1] = expansion1[R] ^ bRShares[1];
+    // Shares of the direction value
+    uint8_t directionShares[2];
+    directionShares[0] = exp0Bits[R];
+    directionShares[1] = exp1Bits[R] ^ dpfkey[0].t[0][R];
 
+    // Use Du-Attalah multiplication to compute shares (1 - b) * L_0 + b * R_0 and to compute shares of b * L_0 + (1 - b) * R_0
+    // TODO: Do this without the hardcoded 0 shares.
+    block* bL0Shares = DuAttalahMultiplication(expansion0[L], directionShares[0], 0, directionShares[1]); // L_0 * direction
+    block* bNotL0Shares = DuAttalahMultiplication(expansion0[L], directionShares[0], 0, directionShares[1] ^ 1); // L_0 * (direction - 1)
+    block* bL1Shares = DuAttalahMultiplication(0, directionShares[0], expansion1[L], directionShares[1]); // L_1 * direction
+    block* bNotL1Shares = DuAttalahMultiplication(0, directionShares[0], expansion1[L], directionShares[1] ^ 1); // L_1 * (direction - 1)
+    block* bR0Shares = DuAttalahMultiplication(expansion0[R], directionShares[0], 0, directionShares[1]); // R_0 * direction
+    block* bNotR0Shares = DuAttalahMultiplication(expansion0[R], directionShares[0], 0, directionShares[1] ^ 1); // R_0 * (direction - 1)
+    block* bR1Shares = DuAttalahMultiplication(0, directionShares[0], expansion1[R], directionShares[1]); // R_1 * direction
+    block* bNotR1Shares = DuAttalahMultiplication(0, directionShares[0], expansion1[R], directionShares[1] ^ 1); // R_1 * (direction - 1)
+
+    // Compute shares of the corrected left side.
     block correctedLeftSideShares[2];
-    correctedLeftSideShares[0] = bNotRShares[0] ^ bLShares[0];
-    correctedLeftSideShares[1] = bNotRShares[1] ^ bLShares[1];
-
-    block* correctedRightSideShares = new block[2];
-    correctedRightSideShares[0] = bNotLShares[0] ^ bRShares[0];
-    correctedRightSideShares[1] = bNotLShares[1] ^ bRShares[1];
+    correctedLeftSideShares[0] = bL0Shares[0] ^ bNotR0Shares[0] ^ bL1Shares[0] ^ bNotR1Shares[0];
+    correctedLeftSideShares[1] = bL0Shares[1] ^ bNotR0Shares[1] ^ bL1Shares[1] ^ bNotR1Shares[1];
 
     // P0 and P1 reveal their shares of the corrected left side and calculate the result.
    sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
     sendData(1, 0, correctedLeftSideShares[1], "Corrected left side");
-
+    // Compute the corrected left side
     block correctedLeftSide = correctedLeftSideShares[0] ^ correctedLeftSideShares[1];
-    printf("Expected: 0\tActual: %s\n", correctedLeftSide.b.to_string().c_str());
+    // = bL0Shares[0] ^ bNotR0Shares[0] ^ bL1Shares[0] ^ bNotR1Shares[0] ^ bL0Shares[1] ^ bNotR0Shares[1] ^ bL1Shares[1] ^ bNotR1Shares[1]
+    // = (b * L0) ^ ((b-1) * R0) ^ (b * L1) ^ ((b-1) * R1) = L * b + R * (1 - b)
 
-    // Cleanup
-    delete[] bRShares;
-    delete[] bLShares;
-    
-    return correctedRightSideShares; // Output the corrected right side shares to be used as shares of the seeds for the next layer.
+    // Set the new values for the seeds
+    newSeed0Shares[0] = bNotL0Shares[0] ^ bR0Shares[0];
+    newSeed0Shares[1] = bNotL0Shares[1] ^ bR0Shares[1];
+    newSeed1Shares[0] = bNotL1Shares[0] ^ bR1Shares[0];
+    newSeed1Shares[1] = bNotL1Shares[1] ^ bR1Shares[1];
+
+    // // Set the new values for the bits.
+    newB0Shares[0] = 0;
+    newB0Shares[1] = exp0Bits[directionShares[0] ^ directionShares[1]] ^ (dpfkey[0].t[0][directionShares[0] ^ directionShares[1]] & b0);
+    newB1Shares[0] = 0;
+    newB1Shares[1] = exp1Bits[directionShares[0] ^ directionShares[1]] ^ (dpfkey[1].t[0][directionShares[0] ^ directionShares[1]] & b1);
+    //  bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
+    //  bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
+    // newB0Shares[0] = newSeed0Shares[0].get_lsb();
+    // newB0Shares[1] = newSeed0Shares[1].get_lsb();
+    // newB1Shares[0] = newSeed1Shares[0].get_lsb();
+    // newB1Shares[1] = newSeed1Shares[1].get_lsb();
+
+
+    printf("Expected: 0\nActual: %s\n", correctedLeftSide.b.to_string().c_str());
 }
 
-block* mpcInnerStage(LowMC key, block CW, block seed0, cwbits* b0, block seed1, cwbits* b1) {
+template <typename KEY_TYPE, size_t nitems, typename __mX>
+void mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index, block* seed0Shares, uint8_t* b0Shares, block* seed1Shares, uint8_t* b1Shares) {
+    block CW = dpfkey[0].cw[index];
+
+    block expansion0Shares[2][2]; // First dimension is party 0 or 1, second dimension is L or R.
+    block expansion1Shares[2][2]; // First dimension is party 0 or 1, second dimension is L or R.
+    uint8_t expansion0BitShares[2][2];  // First dimension is party 0 or 1, second dimension is L or R.
+    uint8_t expansion1BitShares[2][2];  // First dimension is party 0 or 1, second dimension is L or R.
+
+    //***********************************************
+    // TODO: Replace this code with the MPC expansion code.
     // P_0 computes L_0 || R_0 = G(seed_0) + b_0 * CW
-    block expansion0[2];
+    block expansion0Hidden[2];
     uint8_t exp0Bits[2];
-    expand(key, seed0, expansion0, exp0Bits);
-    // expansion0[L] = 0b11;
-    expansion0[L] ^= multiplicationConstants[seed0.get_lsb()] & CW;
-    // expansion0[R] = 0b01;
-    expansion0[R] ^= multiplicationConstants[seed0.get_lsb()] & CW;
+    expand(key, seed0Shares[0] ^ seed0Shares[1], expansion0Hidden, exp0Bits);
+    // cout << "Seed 0:\nLeft Expansion: " << (expansion0Hidden[L]).b.to_string() << endl << "Right Expansion: " << (expansion0Hidden[R]).b.to_string() << endl;
+    // Secret share the expansion's left side.
+    // arc4random_buf(&expansion0Shares[0][L], sizeof(block));
+    // expansion0Shares[1][L] = expansion0Shares[0][L] ^ expansion0Hidden[L];
+    expansion0Shares[0][L] = 0;
+    expansion0Shares[1][L] = expansion0Hidden[L];
 
-    // P_1 computes L_1 || R_1 = G(seed_1) + b_1 * CW
-    block expansion1[2];
+    expansion0BitShares[0][L] = 0; //expansion0Shares[0][L].get_lsb();
+    expansion0BitShares[1][L] = exp0Bits[L]; // expansion0Shares[1][L].get_lsb();
+    // Secret share the expansion's right side.
+    // arc4random_buf(&expansion0Shares[0][R], sizeof(block));
+    // expansion0Shares[1][R] = expansion0Shares[0][R] ^ expansion0Hidden[R];
+    expansion0Shares[0][R] = 0;
+    expansion0Shares[1][R] = expansion0Hidden[R];
+
+    expansion0BitShares[0][R] = 0; //expansion0Shares[0][R].get_lsb();
+    expansion0BitShares[1][R] = exp0Bits[R]; //expansion0Shares[1][R].get_lsb();
+    //***********************************************
+
+
+    expansion0Shares[0][L] ^= multiplicationConstants[b0Shares[0]] & CW;
+    expansion0Shares[1][L] ^= multiplicationConstants[b0Shares[1] ^ 1] & CW;
+    expansion0Shares[0][R] ^= multiplicationConstants[b0Shares[0]] & CW;
+    expansion0Shares[1][R] ^= multiplicationConstants[b0Shares[1] ^ 1] & CW;
+
+
+    //***********************************************
+    // TODO: Replace this code with the MPC expansion code.
+    block expansion1Hidden[2];
     uint8_t exp1Bits[2];
-    expand(key, seed1, expansion1, exp1Bits);
-    // expansion1[L] = 0b11;
-    expansion1[L] ^= multiplicationConstants[seed1.get_lsb()] & CW;
-    // expansion1[R] = 0b10;
-    expansion1[R] ^= multiplicationConstants[seed1.get_lsb()] & CW;
+    expand(key, seed1Shares[0] ^ seed1Shares[1], expansion1Hidden, exp1Bits);
 
-    cout << "Left Side: " << (expansion0[L] ^ expansion1[L]).b.to_string() << endl
-        << "Right Side: " << (expansion0[R] ^ expansion1[R]).b.to_string() << endl << endl;
+    // cout << "Seed 1:\nLeft Expansion: " << (expansion1Hidden[L]).b.to_string() << endl << "Right Expansion: " << (expansion1Hidden[R]).b.to_string() << endl;
+    // Secret share the expansion's left side.
+    // arc4random_buf(&expansion1Shares[0][L], sizeof(block));
+    // expansion1Shares[1][L] = expansion1Shares[0][L] ^ expansion1Hidden[L];
+    expansion1Shares[0][L] = 0;
+    expansion1Shares[1][L] = expansion1Hidden[L];
 
-    // Use Du-Attalah multiplication to compute shares (1 - b) * L + b * R and to compute shares of b * L + (1 - b) * R
-    block* bLShares = DuAttalahMultiplication(expansion0[L], b0, expansion1[L], b1); // L * b
-    block* bRShares = DuAttalahMultiplication(expansion0[R], b0, expansion1[R], b1); // R * b
-    // Compute (1 - b) * L as L - b * L
-    block bNotLShares[2];
-    bNotLShares[0] = expansion0[L] ^ bLShares[0];
-    bNotLShares[1] = expansion1[L] ^ bLShares[1];
-    // Compute (1 - b) * R as R - b * R
-    block bNotRShares[2];
-    bNotRShares[0] = expansion0[R] ^ bRShares[0];
-    bNotRShares[1] = expansion1[R] ^ bRShares[1];
+    expansion1BitShares[0][L] = 0; //expansion1Shares[0][L].get_lsb();
+    expansion1BitShares[1][L] = exp1Bits[L]; //expansion1Shares[1][L].get_lsb();
+    // Secret share the expansion's right side.
+    // arc4random_buf(&expansion1Shares[0][R], sizeof(block));
+    // expansion1Shares[1][R] = expansion1Shares[0][R] ^ expansion1Hidden[R];
+    expansion1Shares[0][R] = 0;
+    expansion1Shares[1][R] = expansion1Hidden[R];
 
+    expansion1BitShares[0][R] = 0; //expansion1Shares[0][R].get_lsb();
+    expansion1BitShares[1][R] = exp1Bits[R]; // expansion1Shares[1][R].get_lsb();
+    //***********************************************
+
+    expansion1Shares[0][L] ^= multiplicationConstants[b1Shares[0]] & CW;
+    expansion1Shares[1][L] ^= multiplicationConstants[b1Shares[1] ^ 1] & CW;
+    expansion1Shares[0][R] ^= multiplicationConstants[b1Shares[0]] & CW;
+    expansion1Shares[1][R] ^= multiplicationConstants[b1Shares[1] ^ 1] & CW;
+
+    cout << "Left Side: " << (expansion0Shares[0][L] ^ expansion0Shares[1][L] ^ expansion1Shares[0][L] ^ expansion1Shares[1][L]).b.to_string() << endl
+        << "Right Side: " << (expansion0Shares[0][R] ^ expansion0Shares[1][R] ^ expansion1Shares[0][R] ^ expansion1Shares[1][R]).b.to_string() << endl << endl;
+
+    // Shares of the direction value
+    uint8_t directionShares[2];
+    directionShares[0] = expansion0BitShares[0][R] ^ expansion1BitShares[0][R];
+    directionShares[1] = expansion0BitShares[1][R] ^ expansion1BitShares[1][R] ^ dpfkey[0].t[index][R];
+
+    cout << "Direction: " << (directionShares[0] ^ directionShares[1]) << "\tShould be: " << (exp1Bits[R] ^ exp0Bits[R] ^ dpfkey[0].t[index][R]) << endl;
+    // Use Du-Attalah multiplication to compute shares (1 - b) * L_0 + b * R_0 and to compute shares of b * L_0 + (1 - b) * R_0
+    // TODO: Do this without the hardcoded 0 shares.
+    block* bL0Shares = DuAttalahMultiplication(expansion0Shares[0][L], directionShares[0], expansion0Shares[1][L], directionShares[1]); // L_0 * direction
+    block* bNotL0Shares = DuAttalahMultiplication(expansion0Shares[0][L], directionShares[0], expansion0Shares[1][L], directionShares[1] ^ 1); // L_0 * (direction - 1)
+    block* bL1Shares = DuAttalahMultiplication(expansion1Shares[0][L], directionShares[0], expansion1Shares[1][L], directionShares[1]); // L_1 * direction
+    block* bNotL1Shares = DuAttalahMultiplication(expansion1Shares[0][L], directionShares[0], expansion1Shares[1][L], directionShares[1] ^ 1); // L_1 * (direction - 1)
+    block* bR0Shares = DuAttalahMultiplication(expansion0Shares[0][R], directionShares[0], expansion0Shares[1][R], directionShares[1]); // R_0 * direction
+    block* bNotR0Shares = DuAttalahMultiplication(expansion0Shares[0][R], directionShares[0], expansion0Shares[1][R], directionShares[1] ^ 1); // R_0 * (direction - 1)
+    block* bR1Shares = DuAttalahMultiplication(expansion1Shares[0][R], directionShares[0], expansion1Shares[1][R], directionShares[1]); // R_1 * direction
+    block* bNotR1Shares = DuAttalahMultiplication(expansion1Shares[0][R], directionShares[0], expansion1Shares[1][R], directionShares[1] ^ 1); // R_1 * (direction - 1)
+
+    // Compute shares of the corrected left side.
     block correctedLeftSideShares[2];
-    correctedLeftSideShares[0] = bNotRShares[0] ^ bLShares[0];
-    correctedLeftSideShares[1] = bNotRShares[1] ^ bLShares[1];
-
-    block* correctedRightSideShares = new block[2];
-    correctedRightSideShares[0] = bNotLShares[0] ^ bRShares[0];
-    correctedRightSideShares[1] = bNotLShares[1] ^ bRShares[1];
+    correctedLeftSideShares[0] = bL0Shares[0] ^ bNotR0Shares[0] ^ bL1Shares[0] ^ bNotR1Shares[0];
+    correctedLeftSideShares[1] = bL0Shares[1] ^ bNotR0Shares[1] ^ bL1Shares[1] ^ bNotR1Shares[1];
 
     // P0 and P1 reveal their shares of the corrected left side and calculate the result.
    sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
     sendData(1, 0, correctedLeftSideShares[1], "Corrected left side");
-
+    // Compute the corrected left side
     block correctedLeftSide = correctedLeftSideShares[0] ^ correctedLeftSideShares[1];
-    printf("Expected: 0\tActual: %s\n", correctedLeftSide.b.to_string().c_str());
+    // = bL0Shares[0] ^ bNotR0Shares[0] ^ bL1Shares[0] ^ bNotR1Shares[0] ^ bL0Shares[1] ^ bNotR0Shares[1] ^ bL1Shares[1] ^ bNotR1Shares[1]
+    // = (b * L0) ^ ((b-1) * R0) ^ (b * L1) ^ ((b-1) * R1) = L * b + R * (1 - b)
 
-    // Cleanup
-    delete[] bRShares;
-    delete[] bLShares;
-    
-    return correctedRightSideShares; // Output the corrected right side shares to be used as shares of the seeds for the next layer.
+    // Set the new values for the seeds
+    seed0Shares[0] = bNotL0Shares[0] ^ bR0Shares[0];
+    seed0Shares[1] = bNotL0Shares[1] ^ bR0Shares[1];
+    seed1Shares[0] = bNotL1Shares[0] ^ bR1Shares[0];
+    seed1Shares[1] = bNotL1Shares[1] ^ bR1Shares[1];
+
+    // // Set the new values for the bits.
+    //  bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
+    //  bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
+    b0Shares[0] = seed0Shares[0].get_lsb();
+    b0Shares[1] = seed0Shares[1].get_lsb();
+    b1Shares[0] = seed1Shares[0].get_lsb();
+    b1Shares[1] = seed1Shares[1].get_lsb();
+
+    printf("Expected: 0\nActual: %s\n", correctedLeftSide.b.to_string().c_str());
 }
 
 int main() {
@@ -245,21 +326,99 @@ int main() {
     const size_t nitems   =  1ULL << 15; // TODO: Change this value to reflect the actual number of items.
     dpf_key<__mX, nitems> dpfkey[2] = { 0 }; 
     gen(key, 2 , dpfkey);
+    constexpr size_t depth = dpf_key<__mX, nitems>::depth;
 
     // Apply layer one of the proof generation MPC protocol
-    block* result = mpcFirstStage(key, dpfkey[0].cw[0], dpfkey[0].root, dpfkey[0].t, dpfkey[1].root, dpfkey[1].t);
-    cout << "Results: " << (result[0] ^ result[1]).b.to_string() << endl << endl;
-    
-    cout << "Party 0:" << endl;
-    printTranscript(0);
-    cout << endl;
-    cout << "Party 1:" << endl;
-    printTranscript(1);
-    cout << endl;
-    cout << "Party 2:" << endl;
-    printTranscript(2);
+    block seed0Shares[2];
+    block seed1Shares[2];
+    uint8_t bit0Shares[2];
+    uint8_t bit1Shares[2];
+    mpcFirstStage(key, dpfkey, dpfkey[0].root, dpfkey[0].root.get_lsb(), dpfkey[1].root, dpfkey[1].root.get_lsb(), seed0Shares, bit0Shares, seed1Shares, bit1Shares);
+    cout << endl
+        << "Bit 0: " << (bit0Shares[0] ^ bit0Shares[1]) << endl
+        << "Bit 1: " << (bit1Shares[0] ^ bit1Shares[1]) << endl
+        << "Seed 0: " << (seed0Shares[0] ^ seed0Shares[1]).b.to_string() << endl
+        << "Seed 1: " << (seed1Shares[0] ^ seed1Shares[1]).b.to_string() << endl
+        << endl;
+    mpcInnerStage(key, dpfkey, 1, seed0Shares, bit0Shares, seed1Shares, bit1Shares);
+    cout << endl << endl << " --------------------------------------------------------------------------------\n\n";
 
-    delete[] result;
+    // Initialize the state information based on the key.
+    block seed0 = dpfkey[0].root;
+    block seed1 = dpfkey[1].root;
+    uint8_t bit0 = dpfkey[0].root.get_lsb();
+    uint8_t bit1 = dpfkey[1].root.get_lsb();
+    block CW;
+    uint8_t direction;
+    
+    for(ssize_t i = 0; i < 2; i++) {
+        printf("Bit 0: %d\nBit 1: %d\n", bit0, bit1);
+        cout
+            << "Seed 0: " << seed0.b.to_string() << endl
+            << "Seed 1: " << seed1.b.to_string() << endl
+            << endl;
+        CW = dpfkey[1].cw[i];
+
+        // Expand seed 0.
+        block expansion0[2];
+        uint8_t exp0Bits[2];
+        expand(key, seed0, expansion0, exp0Bits);
+        // cout << "Seed0\nLeft expansion: " << expansion0[L].b.to_string() << endl << "Right expansion: " << expansion0[R].b.to_string() << endl;
+        expansion0[L] ^= multiplicationConstants[bit0 ^ 1] & CW;
+        expansion0[R] ^= multiplicationConstants[bit0 ^ 1] & CW;
+
+        // Expand seed 1.
+        block expansion1[2];
+        uint8_t exp1Bits[2];
+        expand(key, seed1, expansion1, exp1Bits);
+        // cout << "Seed1\nLeft expansion: " << expansion1[L].b.to_string() << endl << "Right expansion: " << expansion1[R].b.to_string() << endl;
+        expansion1[L] ^= multiplicationConstants[bit1 ^ 1] & CW;
+        expansion1[R] ^= multiplicationConstants[bit1 ^ 1] & CW;
+
+        direction = dpfkey[0].t[i][R] ^ exp0Bits[R] ^ exp1Bits[R]; // bit0 ^ bit1 ^ 1;
+        // printf("Layer: %ld\nDirection: %d\nB0: %d\nB1: %d\n\n", i, direction, bit0, bit1);
+
+        // Conditional on the bit, flip the right and left sides.
+        block correctedLeft[2];
+        correctedLeft[0] = (expansion0[L] & multiplicationConstants[direction]) 
+            ^ (expansion0[R] & multiplicationConstants[direction ^ 1]);
+        correctedLeft[1] = (expansion1[L] & multiplicationConstants[direction])
+            ^ (expansion1[R] & multiplicationConstants[direction ^ 1]);
+        block correctedRight[2];
+        correctedRight[0] = (expansion0[R] & multiplicationConstants[direction])
+            ^ (expansion0[L] & multiplicationConstants[direction ^ 1]);
+        correctedRight[1] = (expansion1[R] & multiplicationConstants[direction])
+            ^ (expansion1[L] & multiplicationConstants[direction ^ 1]);
+
+        cout << "Expected: 0\nActual: " << (correctedLeft[0] ^ correctedLeft[1]).b.to_string() << endl
+            << "Right Side: " << (correctedRight[0] ^ correctedRight[1]).b.to_string() << endl << endl;
+        if((correctedLeft[0] ^ correctedLeft[1]).count() != 0) {
+            cout << "Failed on layer " << i << endl;
+            break;
+        }
+
+        if(i == depth - 1) {
+            cout << endl << "Final Verification\n"
+                << "Expected: 1\nActual: " << (correctedRight[0] ^ correctedRight[1]).b.to_string() << endl;
+        }
+
+        // Update the state based on the generated values and the key.
+        bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
+        bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
+        seed0 = correctedRight[0];
+        seed1 = correctedRight[1];
+    }
+
+    // cout << "Party 0:" << endl;
+    // printTranscript(0);
+    // cout << endl;
+    // cout << "Party 1:" << endl;
+    // printTranscript(1);
+    // cout << endl;
+    // cout << "Party 2:" << endl;
+    // printTranscript(2);
+
+    // delete[] result;
     // delete multiplicationConstants[0];
     // delete multiplicationConstants[1];
 }
