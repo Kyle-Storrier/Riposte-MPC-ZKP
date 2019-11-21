@@ -1,6 +1,6 @@
 CXX=g++
 CXXFLAGS=--std=c++17 -march=native -O3 -g -fopenmp -Wignored-attributes -Wno-ignored-attributes  #-DBOOST_ERROR_CODE_HEADER_ONLY #-DDEBUG #-DVERBOSE
-LIBS=-lbsd -lboost_system -lboost_thread -pthread
+LIBS=-lbsd
 
 default: test dpflowmc dpfaes
 

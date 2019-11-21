@@ -173,7 +173,7 @@ block mpcFirstStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], block seed0, 
     newSeed1Shares[0] = bNotL1Shares[0] ^ bR1Shares[0];
     newSeed1Shares[1] = bNotL1Shares[1] ^ bR1Shares[1];
 
-    // // Set the new values for the bits.
+    // Set the new values for the bits.
     // TODO: Do this properly using MPC.
     newB0Shares[0] = (exp0Bits[0] & directionShares[0]) ^ (exp0Bits[0] & (!directionShares[1]));
     newB0Shares[1] = (exp0Bits[1] & directionShares[0]) ^ (exp0Bits[1] & directionShares[1]) ^ (dpfkey[0].t[0][directionShares[0] ^ directionShares[1]] & b0);
@@ -256,11 +256,10 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
     directionShares[1] = expansion0BitShares[1][R] ^ expansion1BitShares[1][R] ^ dpfkey[0].t[index][R];
 
     cout << "Direction: " << (directionShares[0] ^ directionShares[1]) << endl;
+
     // Use Du-Attalah multiplication to compute shares (1 - b) * L_0 + b * R_0 and to compute shares of b * L_0 + (1 - b) * R_0
-    // TODO: Do this without the hardcoded 0 shares.
     block* bL0Shares = DuAttalahMultiplication(expansion0Shares[0][L], directionShares[0], expansion0Shares[1][L], directionShares[1]); // L_0 * direction
 
-    //block* bNotL0Shares = DuAttalahMultiplication(expansion0Shares[0][L], directionShares[0], expansion0Shares[1][L], directionShares[1] ^ 1); // L_0 * (direction - 1)
     // L_0 * (direction - 1) = L_0 * direction - L_0
     block bNotL0Shares[2];
     bNotL0Shares[0] = bL0Shares[0] ^ expansion0Shares[0][L];
@@ -268,7 +267,6 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
 
     block* bL1Shares = DuAttalahMultiplication(expansion1Shares[0][L], directionShares[0], expansion1Shares[1][L], directionShares[1]); // L_1 * direction
 
-    // block* bNotL1Shares = DuAttalahMultiplication(expansion1Shares[0][L], directionShares[0], expansion1Shares[1][L], directionShares[1] ^ 1); // L_1 * (direction - 1)
     // L_1 * (direction - 1) = L_1 * direction - L_1
     block bNotL1Shares[2];
     bNotL1Shares[0] = bL1Shares[0] ^ expansion1Shares[0][L];
@@ -276,7 +274,6 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
 
     block* bR0Shares = DuAttalahMultiplication(expansion0Shares[0][R], directionShares[0], expansion0Shares[1][R], directionShares[1]); // R_0 * direction
 
-    // block* bNotR0Shares = DuAttalahMultiplication(expansion0Shares[0][R], directionShares[0], expansion0Shares[1][R], directionShares[1] ^ 1); // R_0 * (direction - 1)
     // R_0 * (direction - 1) = R_0 * direction - R_0
     block bNotR0Shares[2];
     bNotR0Shares[0] = bR0Shares[0] ^ expansion0Shares[0][R];
@@ -284,7 +281,6 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
 
     block* bR1Shares = DuAttalahMultiplication(expansion1Shares[0][R], directionShares[0], expansion1Shares[1][R], directionShares[1]); // R_1 * direction
 
-    // block* bNotR1Shares = DuAttalahMultiplication(expansion1Shares[0][R], directionShares[0], expansion1Shares[1][R], directionShares[1] ^ 1); // R_1 * (direction - 1)
     // R_1 * (direction - 1) = R_1 * direction - R_1
     block bNotR1Shares[2];
     bNotR1Shares[0] = bR1Shares[0] ^ expansion1Shares[0][R];
@@ -296,8 +292,9 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
     correctedLeftSideShares[1] = bL0Shares[1] ^ bNotR0Shares[1] ^ bL1Shares[1] ^ bNotR1Shares[1];
 
     // P0 and P1 reveal their shares of the corrected left side and calculate the result.
-   sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
+    sendData(0, 1, correctedLeftSideShares[0], "Corrected left side");
     sendData(1, 0, correctedLeftSideShares[1], "Corrected left side");
+
     // Compute the corrected left side
     block correctedLeftSide = correctedLeftSideShares[0] ^ correctedLeftSideShares[1];
     // = bL0Shares[0] ^ bNotR0Shares[0] ^ bL1Shares[0] ^ bNotR1Shares[0] ^ bL0Shares[1] ^ bNotR0Shares[1] ^ bL1Shares[1] ^ bNotR1Shares[1]
