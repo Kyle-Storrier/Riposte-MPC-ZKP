@@ -318,7 +318,7 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
     newB1Shares[0] = 0;
     newB1Shares[1] = expansion1BitShares[0][directionShares[0] ^ directionShares[1]]
         ^ expansion1BitShares[1][directionShares[0] ^ directionShares[1]]
-         ^ (dpfkey[1].t[index][directionShares[0] ^ directionShares[1]] & (b1Shares[0] ^ b1Shares[1]));
+        ^ (dpfkey[1].t[index][directionShares[0] ^ directionShares[1]] & (b1Shares[0] ^ b1Shares[1]));
 
     // Update the state for the next round.
     b0Shares[0] = newB0Shares[0];
@@ -378,104 +378,4 @@ int main() {
         cout << "\nValid" << endl;
     }
     
-    // cout << endl << endl << " --------------------------------------------------------------------------------\n\n";
-
-    // // Initialize the state information based on the key.
-    // block seed0 = dpfkey[0].root;
-    // block seed1 = dpfkey[1].root;
-    // uint8_t bit0 = dpfkey[0].root.get_lsb();
-    // uint8_t bit1 = dpfkey[1].root.get_lsb();
-    // block CW;
-    // uint8_t direction;
-    
-    // for(ssize_t i = 0; i < 3; i++) {
-    //     printf("Bit 0: %d\nBit 1: %d\n", bit0, bit1);
-    //     cout
-    //         << "Seed 0: " << seed0.b.to_string() << endl
-    //         << "Seed 1: " << seed1.b.to_string() << endl
-    //         << endl;
-    //     CW = dpfkey[1].cw[i];
-
-    //     // Expand seed 0.
-    //     block expansion0[2];
-    //     uint8_t exp0Bits[2];
-    //     expand(key, seed0, expansion0, exp0Bits);
-    //     // cout << "Seed0\nLeft expansion: " << expansion0[L].b.to_string() << endl << "Right expansion: " << expansion0[R].b.to_string() << endl;
-    //     expansion0[L] ^= multiplicationConstants[bit0 ^ 1] & CW;
-    //     expansion0[R] ^= multiplicationConstants[bit0 ^ 1] & CW;
-
-    //     // Expand seed 1.
-    //     block expansion1[2];
-    //     uint8_t exp1Bits[2];
-    //     expand(key, seed1, expansion1, exp1Bits);
-    //     // cout << "Seed1\nLeft expansion: " << expansion1[L].b.to_string() << endl << "Right expansion: " << expansion1[R].b.to_string() << endl;
-    //     expansion1[L] ^= multiplicationConstants[bit1 ^ 1] & CW;
-    //     expansion1[R] ^= multiplicationConstants[bit1 ^ 1] & CW;
-
-    //     direction = dpfkey[0].t[i][R] ^ exp0Bits[R] ^ exp1Bits[R]; // bit0 ^ bit1 ^ 1;
-    //     // printf("Layer: %ld\nDirection: %d\nB0: %d\nB1: %d\n\n", i, direction, bit0, bit1);
-
-    //     // Conditional on the bit, flip the right and left sides.
-    //     block correctedLeft[2];
-    //     correctedLeft[0] = (expansion0[L] & multiplicationConstants[direction]) 
-    //         ^ (expansion0[R] & multiplicationConstants[direction ^ 1]);
-    //     correctedLeft[1] = (expansion1[L] & multiplicationConstants[direction])
-    //         ^ (expansion1[R] & multiplicationConstants[direction ^ 1]);
-    //     block correctedRight[2];
-    //     correctedRight[0] = (expansion0[R] & multiplicationConstants[direction])
-    //         ^ (expansion0[L] & multiplicationConstants[direction ^ 1]);
-    //     correctedRight[1] = (expansion1[R] & multiplicationConstants[direction])
-    //         ^ (expansion1[L] & multiplicationConstants[direction ^ 1]);
-
-    //     cout << "Expected: 0\nActual: " << (correctedLeft[0] ^ correctedLeft[1]).b.to_string() << endl
-    //         << "Right Side: " << (correctedRight[0] ^ correctedRight[1]).b.to_string() << endl << endl;
-    //     if((correctedLeft[0] ^ correctedLeft[1]).count() != 0) {
-    //         cout << "Failed on layer " << i << endl;
-    //         break;
-    //     }
-
-    //     if(i == depth - 1) {
-    //         cout << endl << "Final Verification\n"
-    //             << "Expected: 1\nActual: " << (correctedRight[0] ^ correctedRight[1]).b.to_string() << endl;
-    //     }
-
-    //     // Update the state based on the generated values and the key.
-    //     bit0 = exp0Bits[direction] ^ (dpfkey[0].t[i][direction] & bit0);
-    //     bit1 = exp1Bits[direction] ^ (dpfkey[1].t[i][direction] & bit1);
-    //     seed0 = correctedRight[0];
-    //     seed1 = correctedRight[1];
-    // }
-
-    // cout << "Party 0:" << endl;
-    // printTranscript(0);
-    // cout << endl;
-    // cout << "Party 1:" << endl;
-    // printTranscript(1);
-    // cout << endl;
-    // cout << "Party 2:" << endl;
-    // printTranscript(2);
-
-    // delete[] result;
-    // delete multiplicationConstants[0];
-    // delete multiplicationConstants[1];
 }
-
-
-// Demo: Multiply 0x43 by the bit 1 using Du-Attalah Muliplication, and print out the complete set of transcripts.
-// block x0  = 0xFD;
-// block x1 = 0xBE;
-// bool b0 = 1;
-// bool b1 = 0;
-// block expectedResult = ((x0 ^ x1) & multiplicationConstants[b0 ^ b1]);
-// block *result = DuAttalahMultiplication(x0, b0, x1, b1);
-// cout << "Expected: " << expectedResult.to_ulong() << endl
-//     << "Actual: " << (result[0] ^ result[1]).to_ulong() << endl;
-
-// x0  = 0xFD;
-// x1 = 0xBE;
-// b0 = 1;
-// b1 = 1;
-// expectedResult = ((x0 ^ x1) & multiplicationConstants[b0 ^ b1]);
-// result = DuAttalahMultiplication(x0, b0, x1, b1);
-// cout << "Expected: " << expectedResult.to_ulong() << endl
-//     << "Actual: " << (result[0] ^ result[1]).to_ulong() << endl;
