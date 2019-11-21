@@ -309,15 +309,13 @@ block mpcInnerStage(KEY_TYPE key, dpf_key<__mX, nitems> dpfkey[2], ssize_t index
     // // Set the new values for the bits.
     // TODO: Do this properly using MPC.
     uint8_t newB0Shares[2];
-    newB0Shares[0] = 0;
-    newB0Shares[1] = expansion0BitShares[0][directionShares[0] ^ directionShares[1]]
-        ^ expansion0BitShares[1][directionShares[0] ^ directionShares[1]]
+    newB0Shares[0] = expansion0BitShares[0][directionShares[0] ^ directionShares[1]];
+    newB0Shares[1] = expansion0BitShares[1][directionShares[0] ^ directionShares[1]]
         ^ (dpfkey[0].t[index][directionShares[0] ^ directionShares[1]] & (b0Shares[0] ^ b0Shares[1]));
 
     uint8_t newB1Shares[2];
-    newB1Shares[0] = 0;
-    newB1Shares[1] = expansion1BitShares[0][directionShares[0] ^ directionShares[1]]
-        ^ expansion1BitShares[1][directionShares[0] ^ directionShares[1]]
+    newB1Shares[0] = expansion1BitShares[0][directionShares[0] ^ directionShares[1]];
+    newB1Shares[1] = expansion1BitShares[1][directionShares[0] ^ directionShares[1]]
         ^ (dpfkey[1].t[index][directionShares[0] ^ directionShares[1]] & (b1Shares[0] ^ b1Shares[1]));
 
     // Update the state for the next round.
