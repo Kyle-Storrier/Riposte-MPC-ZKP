@@ -7,6 +7,7 @@
 //#include <x86intrin.h>
 #include <bsd/stdlib.h>
 #include<memory.h>
+#include <iostream>
 
 #include "LowMC.h"
 
@@ -63,7 +64,7 @@ template<typename __mX, size_t nitems> struct dpf_key
 
 
 template<typename KEY_TYPE, typename __mX>
-inline void expand(KEY_TYPE & key, const blocks<__mX> & seed, blocks<__mX> s[2], uint8_t t[2])
+inline void expandBasic(KEY_TYPE & key, const blocks<__mX> & seed, blocks<__mX> s[2], uint8_t t[2])
 {
   
   blocks<__mX> seedL = seed; // _mm_clearlsb_si128(seed);
@@ -90,13 +91,23 @@ inline void expand(KEY_TYPE & key, const blocks<__mX> & seed, blocks<__mX> s[2],
 
   s[L] ^= seedL;
   t[L] = s[L].get_lsb();
-  s[L].clear_lsb();
+  // s[L].clear_lsb();
 
   s[R] ^= seedR;
   t[R]  = s[R].get_lsb();
-  s[R].clear_lsb();
+  // s[R].clear_lsb();
   
 }
+
+template<typename KEY_TYPE, typename __mX>
+inline void expand(KEY_TYPE & key, const blocks<__mX> & seed, blocks<__mX> s[2], uint8_t t[2])
+{
+  expandBasic(key, seed, s, t);
+  s[L].clear_lsb();
+  s[R].clear_lsb();
+}
+
+int printCounter = 0;
 
 template<typename KEY_TYPE, typename __mX>
 inline void nextlayer(KEY_TYPE & aeskey, blocks<__mX> s[2], uint8_t t[2], uint8_t bit,
@@ -108,6 +119,17 @@ inline void nextlayer(KEY_TYPE & aeskey, blocks<__mX> s[2], uint8_t t[2], uint8_
   
   expand(aeskey, s[0], s0, t0);
   expand(aeskey, s[1], s1, t1);
+
+  // std::cout << "Layer " << printCounter << ": "
+  //   << "\nExpansion of s0: "
+  //   << "\n\tL: " << s0[0]
+  //   << "\n\tR: " << s0[1]
+  //   << std::endl
+  //   << "\nExpansion of s1: "
+  //   << "\n\tL: " << s1[0]
+  //   << "\n\tR: " << s1[1]
+  //   << std::endl << std::endl;
+  //  printCounter++;
 
   const uint8_t keep = (bit == 0) ? L : R, lose = 1 - keep;
   blocks<__mX> s0xors1 = s0[lose] ^ s1[lose];
@@ -183,6 +205,9 @@ void gen(KEY_TYPE & aeskey, size_t point, dpf_key<__mX, nitems> dpfkey[2])
    for (size_t i = 0; i < dpf_key<__mX, nitems>::depth; ++i)
    {
      const uint8_t bit = (point >> (dpf_key<__mX, nitems>::depth - i - 1)) & 1U;
+    //  if(printCounter < 3) {
+    //    std::cout << "Seed 0: " << s[0] << std::endl << "Seed 1: " << s[1] << std::endl << std::endl;
+    //  }
      nextlayer(aeskey, s, t, bit, dpfkey[0].cw[i], dpfkey[0].t[i]);
    }
     
