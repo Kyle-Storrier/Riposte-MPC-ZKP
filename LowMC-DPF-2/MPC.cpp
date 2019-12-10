@@ -54,6 +54,14 @@ class MPCrandomness
     return val;
   }
   
+  inline block next_block()
+  {
+    block val;
+    memcpy(&val, cur, sizeof(block));
+    cur += sizeof(block);
+    return val;
+  }
+
   template<typename T>
   inline T && next()
   {
@@ -77,49 +85,7 @@ class MPCrandomness
   unsigned char * cur;
 };
 
-// struct  P2_root_layer
-// {
 
-//  block   substitution[rounds + 1];
-//  block   blinds0[4], blinds1[4];
-//  block   gamma[4];
-//  bool    bit_blinds0[4], bit_blinds1[4];
-// };
-
-
-// struct  P2_middle_layer
-// {
-//   block blinds0[depth][4], blinds1[depth][4];
-//   block gamma[depth][4];
-//   bool bit_blinds0[depth][4], bit_blinds1[depth][4];   
-// };
-
-// struct  PB_root_layer
-// {
-//  block L_shares_sent, L_shares_recv;
-//  block R_shares_sent, R_shares_recv;
-
-//  block   blinds_sent[4], blinds_recv[4];
-//  bool    bit_blinds_sent[4], bit_blinds_recv[4];
-// };
-
-// struct PB_middle_layer
-// {
-//   block   blinds_sent[depth][4],     blinds_recv[depth][4];
-//   bool    bit_blinds_sent[depth][4], bit_blinds_recv[depth][4];
-// };
-
-// struct  P2_Transcripts
-// {
-//   P2_root_layer   P2_root;  
-//   P2_middle_layer P2_middle;
-// };
-
-// struct  PB_Transcripts
-// {
-//   PB_root_layer    PB_root;  
-//   PB_middle_layer  PB_middle;
-// };
 #include "transcripts.h"
 P2_Transcripts P2_message[2];
 PB_Transcripts P0_message, P1_message;
@@ -155,9 +121,13 @@ PB_Transcripts P0_message, P1_message;
     
      for (unsigned r = 0; r < rounds; ++r)
      {
-        P0rand.next(blinds0[r]);
-        P1rand.next(blinds1[r]); 
-        P2rand.next(rand[r]);
+        // P0rand.next(blinds0[r]);
+        // P1rand.next(blinds1[r]); 
+        // P2rand.next(rand[r]);
+
+         arc4random_buf(&blinds0[r], sizeof(block));
+         arc4random_buf(&blinds1[r], sizeof(block));
+         arc4random_buf(&rand[r],  sizeof(block));
 
         const block tmp1 = ((blinds0[r] >> 1) & blinds1[r]) ^ ((blinds1[r] >> 1) & blinds0[r]);
         const block tmp2 = ((blinds0[r] >> 2) & blinds1[r]) ^ ((blinds1[r] >> 2) & blinds0[r]);
@@ -172,14 +142,14 @@ PB_Transcripts P0_message, P1_message;
 
      const block c0 = share[0]; const block c1 = share[1];
     std::pair<std::vector<block>,std::vector<block>> encrypt_outL = lowmckey.encrypt_MPC_proof(c0, c1, blinds0, blinds1, gamma);
-    std::vector<block> verify_out = lowmckey.encrypt_MPC_verify(c1, encrypt_outL.first, blinds1, gamma[1], true);
+    std::vector<block> verify_out = lowmckey.encrypt_MPC_verify(c0, encrypt_outL.second, blinds0, gamma[0], false);
     
     for(size_t j = 0; j < 10; ++j)
     {
-      std::cout << j << " : " << (verify_out[j] ^ encrypt_outL.second[j]) << std::endl;
+      std::cout << j << " : " << (verify_out[j] ^ encrypt_outL.first[j]) << std::endl;
     }
 
-    std::pair<std::vector<block>,std::vector<block>> expand_out = expand_mpc(lowmckey, c0, c1,  s0, t0, s1, t1, blinds0, blinds1, gamma);
+    //std::pair<std::vector<block>,std::vector<block>> expand_out = expand_mpc(lowmckey, c0, c1,  s0, t0, s1, t1, blinds0, blinds1, gamma);
     //expanded_out (first and second are the two shares of expand)
     const block m = c0 ^ c1;
    
@@ -187,16 +157,16 @@ PB_Transcripts P0_message, P1_message;
 
     expand_nonmpc(lowmckey, m , s , t);
 
-    std::cout << "zero: " << ((expand_out.first[L] ^ expand_out.second[L]) ^ s[0]) << " " << ((expand_out.first[R] ^ expand_out.second[R]) ^ s[1]) << std::endl;
+//    std::cout << "zero: " << ((expand_out.first[L] ^ expand_out.second[L]) ^ s[0]) << " " << ((expand_out.first[R] ^ expand_out.second[R]) ^ s[1]) << std::endl;
 
 
-    const block ss0 = expand_out.first[R];
-    const block ss1 = expand_out.second[R];
+    // const block ss0 = expand_out.first[R];
+    // const block ss1 = expand_out.second[R];
 
-    block results[2];
-    multiply_mpc(ss0 , t0, ss1 , !t0, results, 0, 0);
+    // block results[2];
+    // multiply_mpc(ss0 , t0, ss1 , !t0, results, 0, 0);
    
-    std::cout << "non-mpc: " << (ss0 ^ ss1) << std::endl;
+    // std::cout << "non-mpc: " << (ss0 ^ ss1) << std::endl;
 
     //std::cout << std::endl << "expand: " << s[0] << " " << s[1] << std::endl;
   }
@@ -209,7 +179,6 @@ PB_Transcripts P0_message, P1_message;
 
 int main(int argc, char ** argv)
 {  
-
 
   uint64_t point = std::stoi(argv[1]);
   std::cout << "point = " << point << std::endl;
@@ -227,6 +196,15 @@ int main(int argc, char ** argv)
   AES_set_encrypt_key(_mm_set_epi64x(597349, 121379), &aeskey);
 
 
+
+// __m128i seed;
+// arc4random_buf(&seed, sizeof(__m128i));
+// size_t len = 10;
+// MPCrandomness P0(aeskey, seed, len);
+// block x[20];
+// P0.next(x[0]);
+
+
   gen(lowmckey, point , dpfkey);
 
   __m128i seed0, seed1, seed2;
@@ -235,9 +213,11 @@ int main(int argc, char ** argv)
   arc4random_buf(&seed1, sizeof(__m128i));
   arc4random_buf(&seed2, sizeof(__m128i));
 
-  size_t len = 1000;
+  size_t len = 100000;
 
   Simulator sim(aeskey, seed0, seed1, seed2, len);  
+  Verifier  ver0(aeskey, seed0, len);  
+  Verifier  ver1(aeskey, seed1, len);
 
   sim.P0direction = rand();
   sim.P1direction = sim.P0direction ^ directions;
@@ -251,35 +231,46 @@ int main(int argc, char ** argv)
   block block0, block1;
   bool b0 , b1;
 
-  // std::cout << std::endl << std::endl << std::endl << std::endl << std::endl << "---------------------------------------------------------" << std::endl;
-  
-  // sim.dpf_mpc(lowmckey, aeskey, dpfkey[0], dpfkey[1]);
+
+  //sim.dpf_mpc(lowmckey, aeskey, dpfkey[0], dpfkey[1]);
 
   sim.root_layer(lowmckey, dpfkey);
   
-  // for(size_t index = 1; index < depth-1; ++index)
-  // {
-  //   std::cout << std::endl << std::endl << "--------------------------------------------" << std::endl << std::endl;
-  //   sim.middle_layers(lowmckey, dpfkey, index);
-  // }
+  for(size_t index = 1; index < depth-1; ++index)
+  {
+   sim.middle_layers(lowmckey, dpfkey, index);
+  }
 
   bool party0 = false; bool party1 = true;
   
-  Verifier  ver0(aeskey, seed0, seed1, seed2, len);  
-  
-  Verifier  ver1(aeskey, seed0, seed1, seed2, len);
-  
-  ver0.P0direction = sim.P0direction;
-  ver0.P1direction = sim.P1direction;
 
+  std::cout << std::endl << std::endl << "=======================================VERIFIER====================================================" << std::endl << std::endl << std::endl << std::endl;
+ 
+  
+  ver0.Pdirection = sim.P0direction;
+
+  
   ver0.root_layer(P0_message, lowmckey, dpfkey[0], party0);
 
+ 
+  
+   for(size_t index = 1; index < depth-1; ++index)
+   { 
+  //  // std::cout << std::endl << std::endl << "--------------------------------------------" << std::endl << std::endl;
+      ver0.middle_layers(lowmckey, ver0.seed0[index][0], ver0.seed1[index][0], P0_message, dpfkey[0], index, party0);
+   }
+
+
+  ver1.Pdirection = sim.P1direction;
+
+  std::cout << std::endl << std::endl << std::endl << " ------------------------------------------------------------ " << std::endl << std::endl;
+
+  ver1.root_layer(P1_message, lowmckey, dpfkey[1], party1);
   for(size_t index = 1; index < 2; ++index)
-  {
-      //expand_mpc_verify(KEY_TYPE & key, const blocks<__mX> seed, const std::vector<block> c2, block blind[rounds], block gamma[rounds], bool party)
+  { 
+   // std::cout << std::endl << std::endl << "--------------------------------------------" << std::endl << std::endl;
+    ver1.middle_layers(lowmckey, ver1.seed0[index][0], ver1.seed1[index][0], P1_message, dpfkey[1], index, party1);
   }
-
-
 
   return 0;
 }

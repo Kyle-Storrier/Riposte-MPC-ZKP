@@ -47,7 +47,7 @@ int main(int argc, char ** argv)
 
   dpf_key<__mX, nitems> dpfkey[2] = { 0 }; 
   
-  gen(key, 341 , dpfkey);
+  gen(key, 2 , dpfkey);
   
   evalfull3(key, dpfkey[0], s0, t0);
   evalfull3(key, dpfkey[1], s1, t1);

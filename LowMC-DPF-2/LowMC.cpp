@@ -25,14 +25,18 @@ block LowMC::encrypt(const block & message) {
 }
 
 std::vector<block> LowMC::encrypt_MPC_verify(const block & message, const std::vector<block> c2, const block blind[rounds], block gamma[rounds], const bool P) {
-    std::vector<block> c(rounds);
+    std::vector<block> c(rounds+1);
     block tmp = P ? message : message ^ roundkeysXORconstants[0];
 
     for (unsigned r = 1; r <= rounds; ++r) {
         c[r-1] = tmp ^ blind[r-1];
         tmp = Substitution_MPC(tmp, c2[r-1], blind[r-1], gamma[r-1]);
-        tmp = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp);
+        if(P)   tmp = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp);
+        if(!P)  tmp = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp, roundkeysXORconstants[r]);
     }
+    
+    c[rounds] = tmp;
+
     return c;
 }
 
