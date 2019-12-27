@@ -1,7 +1,6 @@
 #include "LowMC.h"
 #include <iostream>
 #include <x86intrin.h>
-
 #include <string>
 //////////////////
 //     MAIN     //
@@ -11,8 +10,8 @@
 int main () {
     // Example usage of the LowMC class
     // Instantiate a LowMC cipher instance called cipher using the key '1'. 
-
-     LowMC cipher(1); 
+    
+     LowMC cipher(1);
      block m = 0xFFD5;
      std::cout << "Plaintext:" << std::endl;
      std::cout << m << std::endl;

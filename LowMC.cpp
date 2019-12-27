@@ -3,164 +3,163 @@
 #include <fstream>
 #include <cstdlib>
 #include <algorithm>
+#include <bsd/stdlib.h>
 
 #include "LowMC.h"
+
 
 
 /////////////////////////////
 //     LowMC functions     //
 /////////////////////////////
 
-block LowMC::encrypt (const block message) {
-    block c = message ^ roundkeys[0];
+block LowMC::encrypt(const block & message) {
+    block c = message ^ roundkeysXORconstants[0];
 
-    for (unsigned r = 1; r <= rounds; ++r) {
-        c =  Substitution(c);
-        c =  MultiplyWithGF2Matrix(LinMatrices[r-1], c);
-        c ^= roundconstants[r-1];
-        c ^= roundkeys[r];
-    }
+     for (unsigned r = 1; r <= rounds; ++r) 
+     {
+         c = Substitution(c);
+         c = MultiplyWithGF2Matrix(LinMatrices[r-1], c, roundkeysXORconstants[r]);
+     }
     return c;
 }
 
+std::vector<block> LowMC::encrypt_MPC_verify(const block & message, const std::vector<block> c2, const block blind[rounds], block gamma[rounds], const bool P) {
+    std::vector<block> c(rounds+1);
+    block tmp = P ? message : message ^ roundkeysXORconstants[0];
 
-block LowMC::decrypt (const block message) {
-    block c = message;
-    for (unsigned r = rounds; r > 0; --r) {
-        c ^= roundkeys[r];
-        c ^= roundconstants[r-1];
-        c =  MultiplyWithGF2Matrix(invLinMatrices[r-1], c);
-        c =  invSubstitution(c);
-    }
-    c ^= roundkeys[0];
-    return c;
-}
-
-
-void LowMC::set_key (keyblock k) {
-    key = k;
-    keyschedule();
-}
-
-
-void LowMC::print_matrices() {
-    std::cout << "LowMC matrices and constants" << std::endl;
-    std::cout << "============================" << std::endl;
-    std::cout << "Block size: " << blocksize << std::endl;
-    std::cout << "Key size: " << keysize << std::endl;
-    std::cout << "Rounds: " << rounds << std::endl;
-    std::cout << std::endl;
-
-    std::cout << "Linear layer matrices" << std::endl;
-    std::cout << "---------------------" << std::endl;
     for (unsigned r = 1; r <= rounds; ++r) {
-        std::cout << "Linear layer " << r << ":" << std::endl;
-        for (auto row: LinMatrices[r-1]) {
-            std::cout << "[";
-            for (unsigned i = 0; i < blocksize; ++i) {
-                std::cout << row[i];
-                if (i != blocksize - 1) {
-                    std::cout << ", ";
-                }
-            }
-            std::cout << "]" << std::endl;
-        }
-        std::cout << std::endl;
-    }
-
-    std::cout << "Round constants" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    for (unsigned r = 1; r <= rounds; ++r) {
-        std::cout << "Round constant " << r << ":" << std::endl;
-        std::cout << "[";
-        for (unsigned i = 0; i < blocksize; ++i) {
-            std::cout << roundconstants[r-1][i];
-            if (i != blocksize - 1) {
-                std::cout << ", ";
-            }
-        }
-        std::cout << "]" << std::endl;
-        std::cout << std::endl;
+        c[r-1] = tmp ^ blind[r-1];
+        tmp = Substitution_MPC(tmp, c2[r-1], blind[r-1], gamma[r-1]);
+        if(P)   tmp = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp);
+        if(!P)  tmp = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp, roundkeysXORconstants[r]);
     }
     
-    std::cout << "Round key matrices" << std::endl;
-    std::cout << "---------------------" << std::endl;
-    for (unsigned r = 0; r <= rounds; ++r) {
-        std::cout << "Round key matrix " << r << ":" << std::endl;
-        for (auto row: KeyMatrices[r]) {
-            std::cout << "[";
-            for (unsigned i = 0; i < keysize; ++i) {
-                std::cout << row[i];
-                if (i != keysize - 1) {
-                    std::cout << ", ";
-                }
-            }
-            std::cout << "]" << std::endl;
-        }
-        if (r != rounds) {
-            std::cout << std::endl;
-        }
+    c[rounds] = tmp;
+
+    return c;
+}
+
+std::pair<std::vector<block>,std::vector<block>> LowMC::encrypt_MPC_proof(const block & m0, const block & m1, const block blind0[rounds], const block blind1[rounds], block gamma[2][rounds]) {
+    std::vector<block> c0(rounds + 1);
+    std::vector<block> c1(rounds + 1);
+    block tmp0 = m0;
+    block tmp1 = m1 ^ roundkeysXORconstants[0];
+
+    for (unsigned r = 1; r <= rounds; ++r) 
+    {
+        c0[r-1] = tmp0 ^ blind0[r-1];
+        c1[r-1] = tmp1 ^ blind1[r-1];
+
+        tmp0 = Substitution_MPC(tmp0, c1[r-1], blind0[r-1], gamma[0][r-1]);
+        tmp1 = Substitution_MPC(tmp1, c0[r-1], blind1[r-1], gamma[1][r-1]);
+        tmp0 = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp0, roundkeysXORconstants[r]);
+        tmp1 = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp1);
     }
+
+
+    block reconstructed = tmp0 ^ tmp1;
+    c0[rounds] = tmp0;
+    c1[rounds] = tmp1;
+   // std::cout << "m0 ^ m1 = " << (m0 ^ m1) << std::endl;
+   // std::cout << "(encrypt_MPC_proof) of (" <<  "--"  <<  ") : " << reconstructed << std::endl << std::endl;
+    return std::make_pair(c0, c1);
+}
+
+void LowMC::runP2(AES_KEY& aeskey, block blinds0[rounds], block blinds1[rounds], block gamma[2][rounds]) {
+  //  GenBlinds(aeskey, blinds0, blinds1, gamma);
 }
 
 
-/////////////////////////////
-// LowMC private functions //
-/////////////////////////////
+block LowMC::Substitution(const block & message) {
+    const block srli1 = (message >> 1) & maskbc;
+    const block srli2 = (message >> 2) & maskc;
 
+    const block tmp = message & srli1;
+    const block bc = (tmp << 2) & maska;
+    const block ac = (message & srli2) << 1;
+    const block ab = (tmp >> 1) & maskc;
 
-
-block LowMC::Substitution (const block message) {
-    block temp = 0;
-    //Get the identity part of the message
-    temp ^= (message >> 3*numofboxes);
-    //Get the rest through the Sboxes
-    for (unsigned i = 1; i <= numofboxes; ++i) {
-        temp <<= 3;
-        temp ^= Sbox[ ((message >> 3*(numofboxes-i))
-                      & block(0x7)).to_ulong()];
-    }
-    return temp;
+    return (bc | ac | ab) ^ message ^ srli1 ^ srli2;
 }
 
+block LowMC::Substitution_MPC(const block & message, const block & message2, const block & blind, block  gamma) {
+    
+    const block srli1 = (message >> 1) & maskbc;
+    const block srli2 = (message >> 2) & maskc;
 
-block LowMC::invSubstitution (const block message) {
-    block temp = 0;
-    //Get the identity part of the message
-    temp ^= (message >> 3*numofboxes);
-    //Get the rest through the invSboxes
-    for (unsigned i = 1; i <= numofboxes; ++i) {
-        temp <<= 3;
-        temp ^= invSbox[ ((message >> 3*(numofboxes-i))
-                         & block(0x7)).to_ulong()];
-    }
-    return temp;
+
+    const block message3 = message ^ message2;
+    const block tmp = (message3 & srli1) ^ (blind & (message2 >> 1));
+    const block bc = (tmp << 2) & maska;
+    const block ac = (((message3 & srli2) ^ (blind & (message2 >> 2))) << 1) & maskb;
+    //const block ac = ((message3 ^ (blind & (message2 >> 2))) & srli2) << 1;
+    const block ab = (tmp >> 1) & maskc;
+
+
+    return (bc | ac | ab) ^ message ^ srli1 ^ srli2 ^ gamma;
 }
 
+void LowMC::GenBlinds(AES_KEY& aeskey, block blinds0[rounds], block blinds1[rounds], block gamma[2][rounds]) {
+   
+     block rand[rounds];
+
+    __m128i seed0; 
+    __m128i seed1;
+    seed0[0] = 21; seed0[1] = 21;
+    seed1[0] = 2; seed1[1] = 2;
+    __m128i seed2 = seed0 ^ seed1;
+    size_t buflen =  rounds * sizeof(block);    
+    PRG(aeskey, seed0, (__m128i *)blinds0, buflen / sizeof(__m128i));
+    PRG(aeskey, seed1, (__m128i *)blinds1, buflen / sizeof(__m128i));
+    PRG(aeskey, seed2, (__m128i *)rand, buflen / sizeof(__m128i));
+    
+
+ 
+    for (unsigned r = 0; r < rounds; ++r)
+    {
+        const block tmp1 = ((blinds0[r] >> 1) & blinds1[r]) ^ ((blinds1[r] >> 1) & blinds0[r]);
+        const block tmp2 = ((blinds0[r] >> 2) & blinds1[r]) ^ ((blinds1[r] >> 2) & blinds0[r]);
+    
+        const block bc = (tmp1 << 2) & maska;
+        const block ac = (tmp2 << 1) & maskb;
+        const block ab = (tmp1 >> 1) & maskc;
+    
+        gamma[0][r] = (bc | ac | ab) ^ rand[r];
+        gamma[1][r] = rand[r];// ^ roundkeysXORconstants[r+1];
+    }
+}
 
 block LowMC::MultiplyWithGF2Matrix
-        (const std::vector<block> matrix, const block message) {
-    block temp = 0;
-    for (unsigned i = 0; i < blocksize; ++i) {
-        temp[i] = (message & matrix[i]).count() % 2;
+        (const std::vector<block> & matrix, const block & message, const block & initial_value) {
+    block temp = initial_value;
+
+    uint64_t bitset;
+    for (size_t k = 0; k < 4; ++k) {
+        bitset = static_cast<__m256i>(message)[k];
+        while (bitset != 0) {
+          uint64_t t = bitset & -bitset;
+          int i = k * 64 + __builtin_ctzl(bitset);
+          temp = _mm256_xor_si256(temp, matrix[i]);
+          bitset ^= t;
+        }
     }
+
     return temp;
 }
 
-
 block LowMC::MultiplyWithGF2Matrix_Key
-        (const std::vector<keyblock> matrix, const keyblock k) {
-    block temp = 0;
-    for (unsigned i = 0; i < blocksize; ++i) {
-        temp[i] = (k & matrix[i]).count() % 2;
-    }
-    return temp;
+(const std::vector<keyblock> matrix, const keyblock k) {
+block temp = 0;
+for (unsigned i = 0; i < blocksize; ++i) {
+temp[i] = (k & matrix[i]).parity();
+}
+return temp;
 }
 
 void LowMC::keyschedule () {
-    roundkeys.clear();
     for (unsigned r = 0; r <= rounds; ++r) {
-        roundkeys.push_back( MultiplyWithGF2Matrix_Key (KeyMatrices[r], key) );
+        roundkeysXORconstants[r] ^= MultiplyWithGF2Matrix_Key (KeyMatrices[r], key);
     }
     return;
 }
@@ -188,9 +187,10 @@ void LowMC::instantiate_LowMC () {
     }
 
     // Create roundconstants
-    roundconstants.clear();
+    roundkeysXORconstants.clear();
+    roundkeysXORconstants.push_back(0);
     for (unsigned r = 0; r < rounds; ++r) {
-        roundconstants.push_back( getrandblock () );
+        roundkeysXORconstants.push_back( getrandblock () );
     }
     // Create KeyMatrices
     KeyMatrices.clear();
@@ -358,7 +358,7 @@ block LowMC::getrandblock () {
     for (unsigned i = 0; i < blocksize; ++i)
     {
      tmp[i] = getrandbit ();
-     }
+    }
     return tmp;
 }
 

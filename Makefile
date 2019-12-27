@@ -1,21 +1,21 @@
 CXX=g++
-CXXFLAGS=--std=c++17 -march=native -O3 -g -fopenmp -Wignored-attributes -Wno-ignored-attributes  #-DBOOST_ERROR_CODE_HEADER_ONLY #-DDEBUG #-DVERBOSE
+CXXFLAGS=--std=c++17 -march=native -O3 -g -Wno-ignored-attributes
 LIBS=-lbsd
 
-default: test dpflowmc dpfaes
+default: dpflowmc dpfaes mpc zkplowmc
 
-test: LowMC.cpp LowMC.h block.h key.h test.cpp
-	$(CXX) $(CXXFLAGS) LowMC.h block.h key.h LowMC.cpp -o test test.cpp $(LIBS)
+mpc: MPC.cpp dpf.h prg.h LowMC.h LowMC.cpp block.h simulator.h verifier.h 
+	$(CXX) $(CXXFLAGS) -o mpc LowMC.cpp MPC.cpp -DLOWMC $(LIBS)
 
-dpflowmc: dpf.cpp dpf.h prg.h LowMC.h  aes.h block.h 
-	$(CXX) $(CXXFLAGS) -DLOWMC dpf.h LowMC.h prg.h aes.h block.h key.h LowMC.cpp -o dpflowmc dpf.cpp $(LIBS)
+dpflowmc: dpf.cpp dpf.h prg.h LowMC.h LowMC.cpp block.h
+	$(CXX) $(CXXFLAGS) -o dpflowmc LowMC.cpp dpf.cpp -DLOWMC $(LIBS)
 
-dpfaes: dpf.cpp dpf.h prg.h LowMC.h  aes.h block.h 
-	$(CXX) $(CXXFLAGS) -DAES dpf.h LowMC.h prg.h aes.h block.h key.h LowMC.cpp -o dpfaes dpf.cpp $(LIBS)
+dpfaes: dpf.cpp dpf.h prg.h aes.h block.h 
+	$(CXX) $(CXXFLAGS) -o dpfaes dpf.cpp -DAES $(LIBS)
 
 zkplowmc: mpcZkp.cpp dpf.h prg.h LowMC.h  aes.h block.h 
-	$(CXX) $(CXXFLAGS) -DLOWMC dpf.h LowMC.h prg.h aes.h block.h key.h LowMC.cpp -o mpczkplowmc mpcZkp.cpp $(LIBS)
+	$(CXX) $(CXXFLAGS) -DLOWMC dpf.h LowMC.h prg.h aes.h block.h LowMC.cpp -o mpczkplowmc mpcZkp.cpp $(LIBS)
 
 clean:
-	rm -f test dpflowmc dpfaes mpczkplowmc
+	rm -f dpflowmc dpfaes
 

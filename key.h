@@ -4,12 +4,11 @@
 #include<iostream>
 #include <x86intrin.h>
 
-const unsigned numofboxes = 49;    // Number of Sboxes
-const unsigned blocksize = 256;   // Block size in bits
-const unsigned keysize = 80; // Key size in bits
-const unsigned rounds = 12; // Number of rounds
-
-const unsigned identitysize = blocksize - 3*numofboxes;
+static constexpr unsigned numofboxes = 63; // Number of Sboxes
+static constexpr unsigned blocksize = 256; // Block size in bits
+static constexpr unsigned keysize = 128; // Key size in bits
+static constexpr unsigned rounds = 14; // Number of rounds
+static constexpr unsigned identitysize = blocksize - 3*numofboxes;
                   // Size of the identity part in the Sbox layer
 
 //typedef std::bitset<blocksize> block; // Store messages and states

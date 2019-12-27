@@ -10,12 +10,14 @@
 using namespace std::chrono;
 
 
+    
+
 int main(int argc, char ** argv)
 {
 
   #ifdef LOWMC
     typedef __m256i __mX;
-    LowMC key(1);
+    LowMC key;
   #endif
 
   #ifdef AES 
@@ -24,7 +26,7 @@ int main(int argc, char ** argv)
     AES_set_encrypt_key(_mm_set_epi64x(597349, 121379), &key);
   #endif
 
-  const size_t nitems   =  1ULL << 15;
+  const size_t nitems   =  512;
 
   
 
@@ -50,11 +52,11 @@ int main(int argc, char ** argv)
   evalfull3(key, dpfkey[0], s0, t0);
   evalfull3(key, dpfkey[1], s1, t1);
 
-  for(size_t j = 0; j < nitems; ++j)
-  {
-    std::cout << (double)t0[j] << " " << (double)t1[j] << std::endl;
-    std::cout << s0[j].a[0] << " " << s0[j].a[1] << " <-> "  << s1[j].a[0] << " " << s1[j].a[1] << std::endl;
-  }
-  
+ for(size_t j = 0; j < nitems; ++j)
+ {
+   std::cout << (double)t0[j] << " " << (double)t1[j] << std::endl;
+   std::cout << blocks<__mX>(s0[j] ^ s1[j]) << std::endl;
+ }
+
   return 0;
 }
