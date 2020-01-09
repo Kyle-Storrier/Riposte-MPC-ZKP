@@ -1,62 +1,67 @@
-#include <unistd.h>
-#include <fcntl.h>
-//#include <iostream>
-#include <tuple>
-#include <chrono>
-//#include "common.h"
+#include <type_traits>
+#include <set>
+#include <vector>
 #include "dpf.h"
-//#include "block.h"
+#include <iostream>
+using namespace dpf;
 
-using namespace std::chrono;
+typedef uint8_t leaf_t;
+typedef __m128i node_t;
+typedef AES_KEY prgkey_t;
 
-
-    
-
-int main(int argc, char ** argv)
+int main(int argc, char * argv[])
 {
+	prgkey_t prgkey;
 
-  #ifdef LOWMC
-    typedef __m256i __mX;
-    LowMC key;
-  #endif
+	const size_t nitems = 1ULL << 6;
+	const size_t target = atoi(argv[1]);
+	const leaf_t val = 0x12;//_mm_set1_epi8(0x12);
 
-  #ifdef AES 
-    typedef __m128i __mX;
-    AES_KEY key;
-    AES_set_encrypt_key(_mm_set_epi64x(597349, 121379), &key);
-  #endif
+	auto [dpfkey0, dpfkey1] = dpf_key<leaf_t, node_t, prgkey_t>::gen(prgkey, nitems, target, val);
+    
+    //auto [dpfkey0, dpfkey1] = dpf_key<leaf_t, node_t, prgkey_t>::gen(prgkey, nitems, target, val, &dpf_key<leaf_t, node_t, prgkey_t>::make_shared_finalizer);
+	
+	leaf_t * output0 = (leaf_t *)std::aligned_alloc(sizeof(node_t), dpfkey0.full_bytes());
+	leaf_t * output1 = (leaf_t *)std::aligned_alloc(sizeof(node_t), dpfkey1.full_bytes());
 
-  const size_t nitems   =  512;
+	printf("%lu\n", dpfkey0.full_bytes() / sizeof(leaf_t));
 
-  
+	dpfkey0.evalfull(output0);
+	dpfkey1.evalfull(output1);
 
-  blocks<__mX> * s0 , * s1;
-  uint8_t * t0, * t1;
-  
-  t0 = (uint8_t*)malloc(nitems * sizeof(uint8_t));
-  t1 = (uint8_t*)malloc(nitems * sizeof(uint8_t));
-  if (posix_memalign((void**)&s0, sizeof(blocks<__mX>), nitems * sizeof(__mX)))
-  {
-   throw std::runtime_error("posix_memalign failed");
-  }
+	for(size_t j = 0; j < nitems; ++j)
+	{	
+	    uint8_t xor_vals = 	output0[j] ^ output1[j];
+		if( xor_vals != 0) 
+		{
+			std::cout << j << ": " << output0[j] << " ^ " << output1[j] << std::endl;
+		}
+	}
+	std::set<size_t> s;
+	s.insert(5);
+	s.insert(10);
+	s.insert(31337);
+	s.insert(10000);
 
-  if (posix_memalign((void**)&s1, sizeof(blocks<__mX>), nitems * sizeof(__mX)))
-  {
-   throw std::runtime_error("posix_memalign failed");
-  }
+	auto v0 = dpfkey0.evallist(std::cbegin(s), std::cend(s));
+	auto v1 = dpfkey1.evallist(std::cbegin(s), std::cend(s));
 
-  dpf_key<__mX, nitems> dpfkey[2] = { 0 }; 
-  
-  gen(key, 2 , dpfkey);
-  
-  evalfull3(key, dpfkey[0], s0, t0);
-  evalfull3(key, dpfkey[1], s1, t1);
+	// for (auto x : v0)
+	// {
+	// 	printf("%lu\n", x);
+	// }
+	// for (auto [val,input] : dpfkey0)
+	// {
+	// 	printf("%lu->%u\n", input, val);
+	// }
 
- for(size_t j = 0; j < nitems; ++j)
- {
-   std::cout << (double)t0[j] << " " << (double)t1[j] << std::endl;
-   std::cout << blocks<__mX>(s0[j] ^ s1[j]) << std::endl;
- }
+	// for (auto [val,input] : dpfkey0.filtered_by(s.begin(), s.end()))
+	// {
+	// 	printf(":::%lu->%u\n", input, val);
+	// }
 
-  return 0;
+	free(output0);
+	free(output1);
+
+	return 0;
 }

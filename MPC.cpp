@@ -1,19 +1,43 @@
-#include <unistd.h>
-#include <fcntl.h>
-#include <tuple>
-#include <chrono>
+
+
+#include <type_traits>
+#include <set>
+#include <vector>
 #include "dpf.h"
-#include <string>
+#include <iostream>
 #include <assert.h>
+#include "picosha2.h"
+using namespace dpf;
 
-using namespace std::chrono;
-__m256i all_ones(void) { return _mm256_set1_epi64x(-1); }
+typedef uint8_t leaf_t;
+typedef __m256i node_t;
+typedef LowMC<__m256i> prgkey_t;
+typedef block<node_t> block_t;
 
-const size_t nitems   = 1ULL << 20;
-typedef __m256i __mX;
-dpf_key<__mX, nitems> dpfkey[2] = { 0 }; 
 
-const size_t depth = dpfkey[0].depth;
+  const prgkey_t prgkey;
+
+  const block_t mask   = prgkey.mask;
+  const block_t maska  = prgkey.maska;
+  const block_t maskb  = prgkey.maskb;
+  const block_t maskc  = prgkey.maskc;
+  const block_t maskbc = prgkey.maskbc;
+
+
+ const size_t round_ =  prgkey.rounds;
+ const size_t rounds =  14;
+
+inline bool xor_if(const bool & block1, const bool & block2, bool flag)
+{
+  if(flag) 
+    {
+    return (block1 ^ block2);
+    }
+  else
+  {
+    return block1;
+  }  
+}
 
 class MPCrandomness
 {
@@ -46,6 +70,19 @@ class MPCrandomness
     return val_b;
   }
 
+  inline bool next_bool()
+  {
+    int  val;
+    memcpy(&val, cur, sizeof(int));
+    val &= 1;
+    cur += sizeof(int);
+    bool val_b = val;
+
+    //std::cout << "val_b = " << val_b << std::endl;
+
+    return val_b;
+  }
+
   template<typename T>
   inline T& next(T & val)
   {
@@ -54,13 +91,14 @@ class MPCrandomness
     return val;
   }
   
-  inline block next_block()
+  inline block_t next_block()
   {
-    block val;
-    memcpy(&val, cur, sizeof(block));
-    cur += sizeof(block);
+    block_t val;
+    memcpy(&val, cur, sizeof(block_t));
+    cur += sizeof(block_t);
     return val;
   }
+  
 
   template<typename T>
   inline T && next()
@@ -72,205 +110,170 @@ class MPCrandomness
   }
 
 
-  // template<typename T>
-  // inline  && T next()
-  // {
-  // T val;
-  // next(val);
-  // return val;
-  // }
-  
   private:
   unsigned char * buf;
   unsigned char * cur;
 };
 
 
-#include "transcripts.h"
-P2_Transcripts P2_message[2];
-PB_Transcripts P0_message, P1_message;
 
+#include "transcripts.h"
 #include "simulator.h"
 #include "verifier.h"
 
+int main(int argc, char * argv[])
+{ 
 
 
-  void Simulator::dpf_mpc(LowMC& lowmckey, AES_KEY& aeskey, dpf_key<__mX, nitems>& k0, dpf_key<__mX, nitems> k1)
-  {
-    std::cout << "Simulator::dpf_mpc" << std::endl;
-
-    const block root0 = k0.root; 
-    const block root1 = k1.root;
-
-    bool t0[2];
-    block s0[2];
-
-    bool t1[2];
-    block s1[2];
- 
-    block share[2];
-    arc4random_buf(share, 2 * sizeof(block));
-    share[0] = k0.root ^ share[1];
-
-    block gamma[2][rounds];
-    block blinds0[rounds];
-    block blinds1[rounds];
-    block rand[rounds];
-    
-    size_t buflen =  rounds * sizeof(block);    
-    
-     for (unsigned r = 0; r < rounds; ++r)
-     {
-        // P0rand.next(blinds0[r]);
-        // P1rand.next(blinds1[r]); 
-        // P2rand.next(rand[r]);
-
-         arc4random_buf(&blinds0[r], sizeof(block));
-         arc4random_buf(&blinds1[r], sizeof(block));
-         arc4random_buf(&rand[r],  sizeof(block));
-
-        const block tmp1 = ((blinds0[r] >> 1) & blinds1[r]) ^ ((blinds1[r] >> 1) & blinds0[r]);
-        const block tmp2 = ((blinds0[r] >> 2) & blinds1[r]) ^ ((blinds1[r] >> 2) & blinds0[r]);
-    
-        const block bc = (tmp1 << 2) & maska;
-        const block ac = (tmp2 << 1) & maskb;
-        const block ab = (tmp1 >> 1) & maskc;
-    
-        gamma[0][r] = (bc | ac | ab) ^ rand[r];
-        gamma[1][r] = rand[r];// ^ roundkeysXORconstants[r+1];
-     }
-
-     const block c0 = share[0]; const block c1 = share[1];
-    std::pair<std::vector<block>,std::vector<block>> encrypt_outL = lowmckey.encrypt_MPC_proof(c0, c1, blinds0, blinds1, gamma);
-    std::vector<block> verify_out = lowmckey.encrypt_MPC_verify(c0, encrypt_outL.second, blinds0, gamma[0], false);
-    
-    for(size_t j = 0; j < 10; ++j)
-    {
-      std::cout << j << " : " << (verify_out[j] ^ encrypt_outL.first[j]) << std::endl;
-    }
-
-    //std::pair<std::vector<block>,std::vector<block>> expand_out = expand_mpc(lowmckey, c0, c1,  s0, t0, s1, t1, blinds0, blinds1, gamma);
-    //expanded_out (first and second are the two shares of expand)
-    const block m = c0 ^ c1;
-   
-    block s[2]; bool t[2];
-
-    expand_nonmpc(lowmckey, m , s , t);
-
-//    std::cout << "zero: " << ((expand_out.first[L] ^ expand_out.second[L]) ^ s[0]) << " " << ((expand_out.first[R] ^ expand_out.second[R]) ^ s[1]) << std::endl;
-
-
-    // const block ss0 = expand_out.first[R];
-    // const block ss1 = expand_out.second[R];
-
-    // block results[2];
-    // multiply_mpc(ss0 , t0, ss1 , !t0, results, 0, 0);
-   
-    // std::cout << "non-mpc: " << (ss0 ^ ss1) << std::endl;
-
-    //std::cout << std::endl << "expand: " << s[0] << " " << s[1] << std::endl;
-  }
-
-
-
-
-
-
-
-int main(int argc, char ** argv)
-{  
-
-  uint64_t point = std::stoi(argv[1]);
-  std::cout << "point = " << point << std::endl;
-  std::bitset<depth> directions = point;
-      for(std::size_t i = 0; i < depth/2; ++i) {
-        bool t = directions[i];
-        directions[i] = directions[depth-i-1];
-        directions[depth-i-1] = t;
-    }
-
-  std::cout << "directions = " << directions << std::endl;
-  AES_KEY aeskey;
-  LowMC lowmckey;
-
-  AES_set_encrypt_key(_mm_set_epi64x(597349, 121379), &aeskey);
-
-
-
-// __m128i seed;
-// arc4random_buf(&seed, sizeof(__m128i));
-// size_t len = 10;
-// MPCrandomness P0(aeskey, seed, len);
-// block x[20];
-// P0.next(x[0]);
-
-
-  gen(lowmckey, point , dpfkey);
-
-  __m128i seed0, seed1, seed2;
-
-  arc4random_buf(&seed0, sizeof(__m128i));
-  arc4random_buf(&seed1, sizeof(__m128i));
-  arc4random_buf(&seed2, sizeof(__m128i));
-
-  size_t len = 100000;
-
-  Simulator sim(aeskey, seed0, seed1, seed2, len);  
-  Verifier  ver0(aeskey, seed0, len);  
-  Verifier  ver1(aeskey, seed1, len);
-
-  sim.P0direction = rand();
-  sim.P1direction = sim.P0direction ^ directions;
-
-  std::cout << "P0direction = " << sim.P0direction << std::endl;
-  std::cout << "P1direction = " << sim.P1direction << std::endl;
-
-  std::cout << "P0direction[depth] = " << sim.P0direction[depth-1] << std::endl;
-  std::cout << "P1direction[depth] = " << sim.P1direction[depth-1] << std::endl;
-
-  block block0, block1;
-  bool b0 , b1;
-
-
-  //sim.dpf_mpc(lowmckey, aeskey, dpfkey[0], dpfkey[1]);
-
-  sim.root_layer(lowmckey, dpfkey);
-  
-  for(size_t index = 1; index < depth-1; ++index)
-  {
-   sim.middle_layers(lowmckey, dpfkey, index);
-  }
+  std::cout << "rounds = " << rounds << std::endl;
 
   bool party0 = false; bool party1 = true;
   
 
-  std::cout << std::endl << std::endl << "=======================================VERIFIER====================================================" << std::endl << std::endl << std::endl << std::endl;
+
+  const size_t nitems = 1ULL << 44;
+  const size_t target = atoi(argv[1]);
  
+  const leaf_t val = 0x12;//_mm_set1_epi8(0x12);
+
+  auto [dpfkey0, dpfkey1] = dpf_key<leaf_t, node_t, prgkey_t>::gen(prgkey, nitems, target, val);
+  
+  const size_t depth = dpfkey1.depth(nitems);  
+ 
+  std::bitset<depth> directions = target;
+  
+  for(std::size_t i = 0; i < depth/2; ++i) 
+  {
+    bool t = directions[i];
+    directions[i] = directions[depth-i-1];
+    directions[depth-i-1] = t;
+  }
+  
+  std::cout << "directions = " << directions << std::endl;
+  
+  AES_KEY aeskey;
+  
+  from_P2 from_P2_to_P0(depth, rounds), from_P2_to_P1(depth, rounds);
+  from_PB from_P0(depth, rounds), from_P1(depth, rounds);
+
+  from_P2 from_P2_to_PB(depth, rounds);
+  from_PB from_PB_other(depth, rounds);
+  
+  size_t len = 100000;
+  
+  __m128i seed0, seed1, seed2;
+  
+  arc4random_buf(&seed0, sizeof(__m128i));
+  arc4random_buf(&seed1, sizeof(__m128i));
+  arc4random_buf(&seed2, sizeof(__m128i));
+  
+
+  Simulator sim(aeskey, seed0, seed1, seed2, len, depth);  
+  Verifier  ver0(aeskey, seed0, len, depth);
+  Verifier  ver1(aeskey, seed1, len, depth);
+
+  sim.root_layer(from_P0, from_P1, from_P2_to_P0, from_P2_to_P1, prgkey, dpfkey0, dpfkey1);
+
+  std::cout << "dept = " << depth << std::endl;
+
+  for(size_t index = 1; index < depth-1; ++index)
+  {
+   sim.middle_layers(from_P0, from_P1, from_P2_to_P0, from_P2_to_P1, prgkey, dpfkey0, dpfkey1, index);
+  }
   
   ver0.Pdirection = sim.P0direction;
-
   
-  ver0.root_layer(P0_message, lowmckey, dpfkey[0], party0);
-
- 
+  ver0.root_layer(from_P2_to_P0, from_P1, from_PB_other, prgkey, dpfkey0, party0);
   
+  assert(from_PB_other.L_shares_recv == from_P0.L_shares_recv);
+  assert(from_PB_other.R_shares_recv == from_P0.R_shares_recv);
+  assert(from_PB_other.bit_L_shares_recv == from_P0.bit_L_shares_recv);
+  assert(from_PB_other.bit_R_shares_recv == from_P0.bit_R_shares_recv);
+  
+  for(size_t j = 0; j < 4; ++j)
+  {
+   assert(from_PB_other.next_bit_L_recv[0][j] == from_P0.next_bit_L_recv[0][j]);
+   assert(from_PB_other.next_bit_R_recv[0][j] == from_P0.next_bit_R_recv[0][j]);
+   assert(from_PB_other.blinds_recv[0][j] == from_P0.blinds_recv[0][j]);   
+   assert(from_PB_other.next_bit_L_recv2[0][j] == from_P0.next_bit_L_recv2[0][j]);
+   assert(from_PB_other.next_bit_R_recv2[0][j] == from_P0.next_bit_R_recv2[0][j]);
+  }
+
    for(size_t index = 1; index < depth-1; ++index)
    { 
-  //  // std::cout << std::endl << std::endl << "--------------------------------------------" << std::endl << std::endl;
-      ver0.middle_layers(lowmckey, ver0.seed0[index][0], ver0.seed1[index][0], P0_message, dpfkey[0], index, party0);
+       ver0.middle_layers(from_P2_to_P0, from_P1, from_PB_other, prgkey, ver0.seed0[index], ver0.seed1[index],   dpfkey0, index, party0);
    }
 
+  for(size_t i = 1; i < depth-1; ++i)
+  {
+    for(size_t j = 0; j < 4; ++j)
+    {
+     assert(from_PB_other.next_bit_L_recv[i][j] == from_P0.next_bit_L_recv[i][j]);
+     assert(from_PB_other.next_bit_R_recv[i][j] == from_P0.next_bit_R_recv[i][j]);
+     assert(from_PB_other.blinds_recv[i][j] == from_P0.blinds_recv[i][j]);   
+     assert(from_PB_other.next_bit_L_recv2[i][j] == from_P0.next_bit_L_recv2[i][j]);
+     assert(from_PB_other.next_bit_R_recv2[i][j] == from_P0.next_bit_R_recv2[i][j]);
+
+    }
+
+    for(size_t j = 0; j < rounds; ++j)
+    {
+      assert(from_PB_other.seed0R_encrypt[i][j] == from_P0.seed0R_encrypt[i][j]);
+    } 
+   }
+
+  std::string src = from_PB_other.to_string();
+  std::string src2 = from_P0.to_string();
+  std::cout << "hash: (verifier 0) " << picosha2::hash256_hex_string(src) << "\n" << std::endl;
+  std::cout << "hash: (verifier 0) " << picosha2::hash256_hex_string(src2) << "\n" << std::endl;
 
   ver1.Pdirection = sim.P1direction;
 
-  std::cout << std::endl << std::endl << std::endl << " ------------------------------------------------------------ " << std::endl << std::endl;
+  std::cout << std::endl << std::endl << std::endl << std::endl << std::endl << std::endl << " ------------------------------------------------------------ " << std::endl << std::endl;
 
-  ver1.root_layer(P1_message, lowmckey, dpfkey[1], party1);
-  for(size_t index = 1; index < 2; ++index)
-  { 
-   // std::cout << std::endl << std::endl << "--------------------------------------------" << std::endl << std::endl;
-    ver1.middle_layers(lowmckey, ver1.seed0[index][0], ver1.seed1[index][0], P1_message, dpfkey[1], index, party1);
+  ver1.root_layer(from_P2_to_P1, from_P0, from_PB_other,   prgkey, dpfkey1, party1);
+
+  assert(from_PB_other.L_shares_recv == from_P1.L_shares_recv);
+  assert(from_PB_other.R_shares_recv == from_P1.R_shares_recv);
+  assert(from_PB_other.bit_L_shares_recv == from_P1.bit_L_shares_recv);
+  assert(from_PB_other.bit_R_shares_recv == from_P1.bit_R_shares_recv);  
+ 
+  for(size_t j = 0; j < 4; ++j)
+  {
+   assert(from_PB_other.next_bit_L_recv[0][j] == from_P1.next_bit_L_recv[0][j]);
+   assert(from_PB_other.next_bit_R_recv[0][j] == from_P1.next_bit_R_recv[0][j]);
+   assert(from_PB_other.blinds_recv[0][j] == from_P1.blinds_recv[0][j]);   
+   assert(from_PB_other.next_bit_L_recv2[0][j] == from_P1.next_bit_L_recv2[0][j]);
+   assert(from_PB_other.next_bit_R_recv2[0][j] == from_P1.next_bit_R_recv2[0][j]);
   }
+  for(size_t index = 1; index < depth-1; ++index)
+  {  
+    ver1.middle_layers(from_P2_to_P1, from_P0, from_PB_other, prgkey, ver1.seed0[index], ver1.seed1[index], dpfkey1, index, party1);
+  }
+
+ 
+  for(size_t i = 1; i < depth-1; ++i)
+  {
+    for(size_t j = 0; j < 4; ++j)
+    {
+     assert(from_PB_other.next_bit_L_recv[i][j] == from_P1.next_bit_L_recv[i][j]);
+     assert(from_PB_other.next_bit_R_recv[i][j] == from_P1.next_bit_R_recv[i][j]);
+     assert(from_PB_other.blinds_recv[i][j] == from_P1.blinds_recv[i][j]);   
+     assert(from_PB_other.next_bit_L_recv2[i][j] == from_P1.next_bit_L_recv2[i][j]);
+    } 
+
+    for(size_t j = 0; j < rounds; ++j)
+    {
+      assert(from_PB_other.seed1R_encrypt[i][j] == from_P1.seed1R_encrypt[i][j]);
+    }
+
+  }
+ src = from_PB_other.to_string();
+ src2 = from_P1.to_string();
+std::cout << "hash: (verifier 1) " << picosha2::hash256_hex_string(src) << "\n" << std::endl;
+std::cout << "hash: (verifier 1) " << picosha2::hash256_hex_string(src2) << "\n" << std::endl;
 
   return 0;
 }
+
+ 
