@@ -153,7 +153,8 @@ int main(int argc, char * argv[])
   
   AES_KEY aeskey;
   
-  from_P2 from_P2_to_P0(depth, rounds), from_P2_to_P1(depth, rounds);
+  from_P2 from_P2_to_P0_original(depth, rounds), from_P2_to_P1_original(depth, rounds);
+  from_P2 from_P2_to_P0_decompressed(depth, rounds), from_P2_to_P1_decompressed(depth, rounds);
   from_PB from_P0_original(depth, rounds), from_P1_original(depth, rounds);
   from_PB from_P0_decompressed(depth, rounds);
   from_PB from_P1_decompressed(depth, rounds);
@@ -174,13 +175,13 @@ int main(int argc, char * argv[])
   Verifier  ver0(aeskey, seed0, len, depth);
   Verifier  ver1(aeskey, seed1, len, depth);
 
-  sim.root_layer(from_P0_original, from_P1_original, from_P2_to_P0, from_P2_to_P1, prgkey, dpfkey0, dpfkey1);
+  sim.root_layer(from_P0_original, from_P1_original, from_P2_to_P0_original, from_P2_to_P1_original, prgkey, dpfkey0, dpfkey1);
 
   std::cout << "dept = " << depth << std::endl;
 
   for(size_t index = 1; index < depth-1; ++index)
   {
-   sim.middle_layers(from_P0_original, from_P1_original, from_P2_to_P0, from_P2_to_P1, prgkey, dpfkey0, dpfkey1, index);
+   sim.middle_layers(from_P0_original, from_P1_original, from_P2_to_P0_original, from_P2_to_P1_original, prgkey, dpfkey0, dpfkey1, index);
   }
 
   from_PB_compressed from_P0_compressed, from_P1_compressed;
@@ -191,9 +192,17 @@ int main(int argc, char * argv[])
   from_P0_decompressed = decompressTranscript(from_P0_compressed);
   from_P1_decompressed = decompressTranscript(from_P1_compressed);
   
+  from_P2_compressed from_P2_to_P0_compressed, from_P2_to_P1_compressed;
+
+  from_P2_to_P0_compressed = compressTranscript(from_P2_to_P0_original);
+  from_P2_to_P1_compressed = compressTranscript(from_P2_to_P1_original);
+
+  from_P2_to_P0_decompressed = decompressTranscript(from_P2_to_P0_compressed);
+  from_P2_to_P1_decompressed = decompressTranscript(from_P2_to_P1_compressed);
+
   ver0.Pdirection = sim.P0direction;
   
-  ver0.root_layer(from_P2_to_P0, from_P1_decompressed, from_PB_other, prgkey, dpfkey0, party0);
+  ver0.root_layer(from_P2_to_P0_decompressed, from_P1_decompressed, from_PB_other, prgkey, dpfkey0, party0);
   
   assert(from_PB_other.L_shares_recv == from_P0_decompressed.L_shares_recv);
   assert(from_PB_other.R_shares_recv == from_P0_decompressed.R_shares_recv);
@@ -211,7 +220,7 @@ int main(int argc, char * argv[])
 
    for(size_t index = 1; index < depth-1; ++index)
    { 
-       ver0.middle_layers(from_P2_to_P0, from_P1_decompressed, from_PB_other, prgkey, ver0.seed0[index], ver0.seed1[index],   dpfkey0, index, party0);
+       ver0.middle_layers(from_P2_to_P0_decompressed, from_P1_decompressed, from_PB_other, prgkey, ver0.seed0[index], ver0.seed1[index],   dpfkey0, index, party0);
    }
 
   for(size_t i = 1; i < depth-1; ++i)
@@ -241,7 +250,7 @@ int main(int argc, char * argv[])
 
   std::cout << std::endl << std::endl << std::endl << std::endl << std::endl << std::endl << " ------------------------------------------------------------ " << std::endl << std::endl;
 
-  ver1.root_layer(from_P2_to_P1, from_P0_decompressed, from_PB_other,   prgkey, dpfkey1, party1);
+  ver1.root_layer(from_P2_to_P1_decompressed, from_P0_decompressed, from_PB_other,   prgkey, dpfkey1, party1);
 
   assert(from_PB_other.L_shares_recv == from_P1_decompressed.L_shares_recv);
   assert(from_PB_other.R_shares_recv == from_P1_decompressed.R_shares_recv);
@@ -259,7 +268,7 @@ int main(int argc, char * argv[])
 
   for(size_t index = 1; index < depth-1; ++index)
   {  
-    ver1.middle_layers(from_P2_to_P1, from_P0_decompressed, from_PB_other, prgkey, ver1.seed0[index], ver1.seed1[index], dpfkey1, index, party1);
+    ver1.middle_layers(from_P2_to_P1_decompressed, from_P0_decompressed, from_PB_other, prgkey, ver1.seed0[index], ver1.seed1[index], dpfkey1, index, party1);
   }
 
  

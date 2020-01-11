@@ -1,8 +1,8 @@
 CXX=g++
-CXXFLAGS=--std=c++17 -march=native -O3 -g -Wno-ignored-attributes -mavx2
+CXXFLAGS=--std=c++17 -march=native -g -O3 -Wno-ignored-attributes -mavx2
 LIBS=-lbsd
 
-default: dpflowmc dpfaes mpc zkplowmc
+default: dpflowmc dpfaes mpc zkplowmc transcript
 
 mpc: MPC.cpp dpf.h prg.h lowmc.h lowmc.cpp block.h simulator.h verifier.h transcripts.h
 	$(CXX) $(CXXFLAGS) -o mpc lowmc.cpp MPC.cpp -DLOWMC $(LIBS)
