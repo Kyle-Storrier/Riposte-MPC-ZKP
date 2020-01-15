@@ -10,11 +10,11 @@
 template <typename __mX>
 auto LowMC<__mX>::encrypt(const block_t & message) const   
 {
+     
 	block_t c = message ^ roundkeysXORconstants[0];
-
 	for (unsigned r = 1; r <= rounds; ++r)
-	{
-		c =  Substitution(c);
+	{  
+		c =  Substitution(c);  
 		c =  MultiplyWithGF2Matrix(LinMatrices[r-1], c, roundkeysXORconstants[r]);
 	}
 	return c;
@@ -35,7 +35,7 @@ auto LowMC<__mX>::encrypt_MPC(const block_t & message, const block_t blind[], co
 }
 
 template <typename __mX>
-auto LowMC<__mX>::encrypt_MPC_verify(const block_t & message, const std::vector<block_t> & c2, const block_t blind[], block_t gamma[], const bool P) const
+ auto LowMC<__mX>::encrypt_MPC_verify(const block_t & message, const block_t c2[], const block_t blind[], block_t gamma[], const bool P, block_t encrypt_out[]) const
 {
 	std::vector<block_t> c;
 	c.reserve(rounds+1);
@@ -44,11 +44,15 @@ auto LowMC<__mX>::encrypt_MPC_verify(const block_t & message, const std::vector<
 
 	for (unsigned r = 1; r <= rounds; ++r)
 	{
-		c.emplace_back(tmp ^ blind[r-1]);
+	//	c.emplace_back(tmp ^ blind[r-1]);
+        encrypt_out[r-1] = tmp ^ blind[r-1];
 		tmp = Substitution_MPC(tmp, c2[r-1], blind[r-1], gamma[r-1]);
 		tmp = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp, P ? 0 : roundkeysXORconstants[r]);
 	}
-	c.emplace_back(tmp);
+
+    encrypt_out[rounds] = tmp;
+	
+    c.emplace_back(tmp);
 
 	return std::move(c);
 }
@@ -56,7 +60,7 @@ auto LowMC<__mX>::encrypt_MPC_verify(const block_t & message, const std::vector<
 
 template <typename __mX>
 auto LowMC<__mX>::encrypt_MPC_proof(
-    const block_t & m0, const block_t & m1, const block_t blind0[], const block_t blind1[], block_t gamma[2][14]) const
+    const block_t & m0, const block_t & m1, const block_t blind0[], const block_t blind1[], block_t gamma[2][14], block_t encrypt_outL[], block_t encrypt_outR[]) const
 {
 	std::vector<block_t> c0;
 	c0.reserve(rounds+1);
@@ -69,13 +73,25 @@ auto LowMC<__mX>::encrypt_MPC_proof(
 	for (unsigned r = 1; r <= rounds; ++r) 
 	{
 		c0.emplace_back(tmp0 ^ blind0[r-1]);
-		tmp0 = Substitution_MPC(tmp0, c1[r-1], blind0[r-1], gamma[0][r-1]);
+        
+        encrypt_outL[r-1] = tmp0 ^ blind0[r-1];
+
+        c1.emplace_back(tmp1 ^ blind1[r-1]);
+    
+        encrypt_outR[r-1] = tmp1 ^ blind1[r-1];
+    
+        
+
+    	tmp0 = Substitution_MPC(tmp0, c1[r-1], blind0[r-1], gamma[0][r-1]);
 		tmp0 = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp0, roundkeysXORconstants[r]);
 		
-		c1.emplace_back(tmp1 ^ blind1[r-1]);
+		
 		tmp1 = Substitution_MPC(tmp1, c0[r-1], blind1[r-1], gamma[1][r-1]);
 		tmp1 = MultiplyWithGF2Matrix(LinMatrices[r-1], tmp1, 0);
 	}
+
+    encrypt_outL[rounds] = tmp0;
+    encrypt_outR[rounds] = tmp1;
 
 	c0.emplace_back(tmp0);
 	c1.emplace_back(tmp1);
@@ -100,16 +116,30 @@ auto LowMC<__mX>::Substitution(const block_t & message) const
 template <typename __mX>
 auto LowMC<__mX>::Substitution_MPC(const block_t & message, const block_t & message2, const block_t & blind, const block_t & gamma) const
 {
-	const block_t srli1 = (message >> 1) & maskbc;
-	const block_t srli2 = (message >> 2) & maskc;
+	// const block_t srli1 = (message >> 1) & maskbc;
+	// const block_t srli2 = (message >> 2) & maskc;
 
-	const block_t message3 = message ^ message2;
-	const block_t tmp = (message3 & srli1) ^ (blind & (message2 >> 1));
-	const block_t bc = (tmp << 2) & maska;
-	const block_t ac = ((message3 ^ (blind & (message2 >> 2))) & srli2) << 1;
-	const block_t ab = (tmp >> 1) & maskc;
+	// const block_t message3 = message ^ message2;
+	// const block_t tmp = (message3 & srli1) ^ (blind & (message2 >> 1));
+	// const block_t bc = (tmp << 2) & maska;
+	// const block_t ac = ((message3 ^ (blind & (message2 >> 2))) & srli2) << 1;
+	// const block_t ab = (tmp >> 1) & maskc;
 
-	return (bc | ac | ab) ^ message ^ srli1 ^ srli2 ^ gamma;
+	// return (bc | ac | ab) ^ message ^ srli1 ^ srli2 ^ gamma;
+
+    const block_t srli1 = (message >> 1) & maskbc;
+    const block_t srli2 = (message >> 2) & maskc;
+
+
+    const block_t message3 = message ^ message2;
+    const block_t tmp = (message3 & srli1) ^ (blind & (message2 >> 1));
+    const block_t bc = (tmp << 2) & maska;
+    const block_t ac = (((message3 & srli2) ^ (blind & (message2 >> 2))) << 1) & maskb;
+    //const block ac = ((message3 ^ (blind & (message2 >> 2))) & srli2) << 1;
+    const block_t ab = (tmp >> 1) & maskc;
+
+
+    return (bc | ac | ab) ^ message ^ srli1 ^ srli2 ^ gamma;
 }
 
 template <typename __mX>
@@ -136,16 +166,19 @@ template <typename __mX>
 auto LowMC<__mX>::MultiplyWithGF2Matrix(const std::vector<block_t> & matrix, const block_t & message, const block_t & initial_value) const
 {
 	block_t temp = initial_value;
+    
+    uint64_t bitset ;
 
-	for (size_t k = 0; k < sizeof(block_t) / 8; ++k)
+    for (size_t k = 0; k < sizeof(block_t) / 8; ++k)
 	{
-		uint64_t bitset = static_cast<__mX>(message)[k];
-		while (bitset != 0)
+		bitset = static_cast<__mX>(message)[k];
+        while (bitset != 0)
 		{
 			uint64_t t = bitset & -bitset;
 			int i = k * 64 + __builtin_ctzl(bitset);
-			temp = temp ^ matrix[i];
-			bitset ^= t;
+			
+            temp =  temp ^ matrix[i];
+        	bitset ^= t;
 		}
 	}
 

@@ -63,6 +63,7 @@ static inline void expand(const prgkey_t & prgkey, const block<node_t> & seed, b
 	s[R] = clear_lsb(s[R], 0b11);
 } // dpf::expand
 
+
 template<typename node_t, typename prgkey_t>
 static inline void traverse2(const prgkey_t & prgkey, const block<node_t> & seed,
 	const uint8_t cw_t[2], const block<node_t> & cw, const uint8_t prev_t,
@@ -210,6 +211,7 @@ struct dpf_key final
 
 		block_t root[2];
 		arc4random_buf(root, sizeof(root));
+
 		uint8_t t[2] = { get_lsb(root[0]), !t[0] };
 		root[1] = set_lsb(root[1], t[1]);
 		block_t s[2] = { root[0], root[1] };

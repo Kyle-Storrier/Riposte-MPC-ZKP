@@ -13,9 +13,9 @@ int main(int argc, char * argv[])
 {
 	prgkey_t prgkey;
 
-	const size_t nitems = 1ULL << 6;
+	const size_t nitems = 1ULL << 10;
 	const size_t target = atoi(argv[1]);
-	const leaf_t val = 0x12;//_mm_set1_epi8(0x12);
+	const leaf_t val = 1;//_mm_set1_epi8(0x12);
 
 	auto [dpfkey0, dpfkey1] = dpf_key<leaf_t, node_t, prgkey_t>::gen(prgkey, nitems, target, val);
     
@@ -34,7 +34,7 @@ int main(int argc, char * argv[])
 	    uint8_t xor_vals = 	output0[j] ^ output1[j];
 		if( xor_vals != 0) 
 		{
-			std::cout << j << ": " << output0[j] << " ^ " << output1[j] << std::endl;
+			std::cout << j << ": " << (int)output0[j] << " ^ " << (int)output1[j] << " = " << (int) xor_vals << std::endl;
 		}
 	}
 	std::set<size_t> s;
