@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=--std=c++17 -march=native -O3 -g -Wno-ignored-attributes
+CXXFLAGS=--std=c++17 -march=native -O3 -g -Wno-ignored-attributes -mavx2
 LIBS=-lbsd 
 
 default: dpflowmc dpfaes mpc zkplowmc
