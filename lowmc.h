@@ -19,14 +19,14 @@ class LowMC
 	static constexpr unsigned blocksize = CHAR_BIT * sizeof(__mX); // Block size in bits
 	static constexpr unsigned keysize = 128;    // Key size in bits
 
-	const unsigned identitysize;
-	// Size of the identity part in the Sbox layer
+	const size_t identitysize;
+    // Size of the identity part in the Sbox layer
 
 	const block_t mask   = std::string("0100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100100");
-	const block_t maska  = mask  >> (identitysize-1);
-	const block_t maskb  = maska >> 1;
-	const block_t maskc  = maska >> 2;
-	const block_t maskbc = maskb | maskc;
+    block_t maska;//  = bits_ >> (identitysize-1);  
+	block_t maskb;//  = maska >> 1;
+	block_t maskc;//  = maska >> 2;
+	block_t maskbc;// = maskb | maskc;
 	const keyblock_t key;  //Stores the master key
 
 	LowMC(const __m128i & key_ = _mm_setzero_si128())
@@ -35,16 +35,21 @@ class LowMC
 	    identitysize(blocksize - 3*numofboxes),
 	    key(key_)
 	{
+         maska  = mask;  
+         maska.shiftr(identitysize-1);
+         maskb  = maska >> 1;
+         maskc  = maska >> 2;
+         maskbc = maskb | maskc;
 		instantiate_LowMC();
 		keyschedule();
 	}
 
 	auto encrypt (const block_t & message) const;
 	auto encrypt_MPC (const block_t & message, const block_t blind[], const block_t gamma[], const bool P = 0) const;
-    auto encrypt_MPC_proof(const block_t & m0, const block_t & m1, const block_t blind0[], const block_t blind1[], block_t gamma[2][14]) const;
-	auto encrypt_MPC_verify(const block_t & message, const std::vector<block_t> & c2, const block_t blind[], block_t gamma[], const bool P) const;
+    auto encrypt_MPC_proof(const block_t & m0, const block_t & m1, const block_t blind0[], const block_t blind1[], block_t gamma[2][14], block_t encrypt_outL[], block_t encrypt_outR[]) const;
+	auto encrypt_MPC_verify(const block_t & message, const block_t c2[], const block_t blind[], block_t gamma[], const bool P, block_t encrypt_out[]) const;
 
-  private:
+  //private:
 	// LowMC private data members //
 	std::vector<std::vector<block_t>> LinMatrices;
 	// Stores the binary matrices for each round
