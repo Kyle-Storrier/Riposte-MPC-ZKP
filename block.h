@@ -82,7 +82,7 @@ union block
   inline const unsigned parity() const { return bits.count() % 2; }
   inline void shiftr(const size_t pos) { bits >>= pos; }
   inline void shiftl(const size_t pos) { bits <<= pos; }
-
+  inline   block<__mX> shiftr_bits(const size_t pos) const{ return bits >> pos; } 
  //private:
   block(std::bitset<8 * sizeof(__mX)> & bitset) : bits(bitset) { }
   __mX mX;
@@ -191,6 +191,7 @@ inline block<__m256i> operator^(const block<__m256i> & block1, const block<__m25
 {
   return _mm256_xor_si256(block1, block2);
 }
+ 
 
 template<>
 inline block<__m128i> operator^(const block<__m128i> & block1, const block<__m128i> & block2)
