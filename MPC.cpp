@@ -72,6 +72,16 @@ int main(int argc, char * argv[])
   const size_t depth = dpfkey1.depth(nitems);  
  
   from_PB_ from_P0_[depth], from_P1_[depth], from_PB_other_[depth], from_PB_other_2[depth];
+  memset(from_P0_, 0, sizeof(from_P0_[0]) * depth);
+  memset(from_P1_, 0, sizeof(from_P1_[1]) * depth);
+  memset(from_PB_other_, 0, sizeof(from_P0_[0]) * depth);
+  memset(from_PB_other_2, 0, sizeof(from_P1_[0]) * depth);
+  from_PB_compressed_ from_P0_compressed[depth], from_P1_compressed[depth];
+  memset(from_P0_compressed, 0, sizeof(from_PB_compressed_) * depth);
+  memset(from_P1_compressed, 0, sizeof(from_PB_compressed_) * depth);
+  from_PB_ from_P0_decompressed[depth], from_P1_decompressed[depth];
+  memset(from_P0_decompressed, 0, sizeof(from_P0_[0]) * depth);
+  memset(from_P1_decompressed, 0, sizeof(from_P1_[0]) * depth);
 
   from_PB_ from_P0_V0_[depth], from_P1_V0_[depth];
 
@@ -130,6 +140,21 @@ int main(int argc, char * argv[])
   std::cout << "--------------------------------------" << std::endl << std::endl << std::endl;
 }
 
+  block_t compressionClearBits;
+  compressionClearBits.bits.reset();
+  for(long i = 0; i < 256 - 66; i++) { // Using 256 - 66 is due to the shifts applied to the masks in the LowMC code.
+    compressionClearBits.bits.set(i);
+  }
+
+for(size_t i = 0; i < depth; i++) {
+  compressTranscript(from_P0_[i], from_P0_compressed[i]);
+  compressTranscript(from_P1_[i], from_P1_compressed[i]);
+}
+
+for(size_t i = 0; i < depth; i++) {
+  decompressTranscript(from_P0_compressed[i], from_P0_decompressed[i]);
+  decompressTranscript(from_P1_compressed[i], from_P1_decompressed[i]);
+}
 
   Verifier2 ver2_0(aeskey, seed0, seed1, seed2, len, depth);  
 
@@ -154,16 +179,27 @@ int main(int argc, char * argv[])
 
   for(size_t i = 0; i < depth; ++i) ver0.Pdirection[i] = ver2_0.P0direction[i];
   
-  ver0.root_layer(from_P2_to_P0, from_P1_, from_PB_other_, prgkey, dpfkey0, party0);
+  ver0.root_layer(from_P2_to_P0, from_P1_decompressed, from_PB_other_, prgkey, dpfkey0, party0);
   
-  assert(from_PB_other_[0].L_shares_recv == from_P0_[0].L_shares_recv);
-  assert(from_PB_other_[0].R_shares_recv == from_P0_[0].R_shares_recv);
-  assert(from_PB_other_[0].bit_L_shares_recv == from_P0_[0].bit_L_shares_recv);
-  assert(from_PB_other_[0].bit_R_shares_recv == from_P0_[0].bit_R_shares_recv);
+  assert(from_PB_other_[0].L_shares_recv == from_P0_decompressed[0].L_shares_recv);
+  assert(from_PB_other_[0].R_shares_recv == from_P0_decompressed[0].R_shares_recv);
+  assert(from_PB_other_[0].bit_L_shares_recv == from_P0_decompressed[0].bit_L_shares_recv);
+  assert(from_PB_other_[0].bit_R_shares_recv == from_P0_decompressed[0].bit_R_shares_recv);
   
   for(size_t index = 1; index < depth; ++index)
   { 
-       ver0.middle_layers(from_P2_to_P0 , from_P1_, from_PB_other_, prgkey, ver0.seed0[index], ver0.seed1[index],   dpfkey0, index, party0);
+       ver0.middle_layers(from_P2_to_P0 , from_P1_decompressed, from_PB_other_, prgkey, ver0.seed0[index], ver0.seed1[index],   dpfkey0, index, party0);
+  }
+
+   for(size_t i = 0; i < depth-1; ++i)
+  {
+    for(size_t j = 0; j < rounds; ++j)
+    {
+      from_PB_other_[i].seed0L_encrypt[j] = from_PB_other_[i].seed0L_encrypt[j] & compressionClearBits;
+      from_PB_other_[i].seed0R_encrypt[j] = from_PB_other_[i].seed0R_encrypt[j] & compressionClearBits;
+      from_PB_other_[i].seed1L_encrypt[j] = from_PB_other_[i].seed1L_encrypt[j] & compressionClearBits;
+      from_PB_other_[i].seed1R_encrypt[j] = from_PB_other_[i].seed1R_encrypt[j] & compressionClearBits;
+    }
   }
   
   for(size_t i = 0; i < depth-1; ++i)
@@ -172,24 +208,27 @@ int main(int argc, char * argv[])
       for(size_t j = 0; j < 4; ++j)
       { 
        //std::cout << "-> " << (from_PB_other_[i].blinds_recv[j] ^ from_P0_[i].blinds_recv[j]).bits << std::endl;
-       assert(from_PB_other_[i].next_bit_L_recv[j] == from_P0_[i].next_bit_L_recv[j]);
-       assert(from_PB_other_[i].next_bit_R_recv[j] == from_P0_[i].next_bit_R_recv[j]);
-       assert(from_PB_other_[i].blinds_recv[j] == from_P0_[i].blinds_recv[j]);   
+       assert(from_PB_other_[i].next_bit_L_recv[j] == from_P0_decompressed[i].next_bit_L_recv[j]);
+       assert(from_PB_other_[i].next_bit_R_recv[j] == from_P0_decompressed[i].next_bit_R_recv[j]);
+       assert(from_PB_other_[i].blinds_recv[j] == from_P0_decompressed[i].blinds_recv[j]);   
        //assert(from_PB_other_[i].next_bit_L_recv2[j] == from_P0_[i].next_bit_L_recv2[j]);
        //assert(from_PB_other_[i].next_bit_R_recv2[j] == from_P0_[i].next_bit_R_recv2[j]);
       }
 
       for(size_t j = 0; j < rounds; ++j)
       {
-        assert(from_PB_other_[i].seed0L_encrypt[j] == from_P0_[i].seed0L_encrypt[j]);
-        assert(from_PB_other_[i].seed0R_encrypt[j] == from_P0_[i].seed0R_encrypt[j]);
+        std::cout << "i = " << i << " j = " << j << " depth = " << depth << std::endl;
+        assert(from_PB_other_[i].seed0L_encrypt[j] == from_P0_decompressed[i].seed0L_encrypt[j]);
+        assert(from_PB_other_[i].seed0R_encrypt[j] == from_P0_decompressed[i].seed0R_encrypt[j]);
+        assert(from_PB_other_[i].seed1L_encrypt[j] == from_P0_decompressed[i].seed1L_encrypt[j]);
+        assert(from_PB_other_[i].seed1R_encrypt[j] == from_P0_decompressed[i].seed1R_encrypt[j]);
       } 
   }
 
 
 
 
-  const char * buffer0 = (const  char*)& from_P0_[2];
+  const char * buffer0 = (const  char*)& from_P0_decompressed[2];
   const char * buffer_other_0 = (const  char*)&from_PB_other_[2];
   std::string str_other_0(buffer_other_0);
   std::string str0(buffer0);
@@ -200,7 +239,7 @@ int main(int argc, char * argv[])
 
    std::cout << std::endl << std::endl << std::endl << std::endl << std::endl << std::endl << " ------------------------------------------------------------ " << std::endl << std::endl;
 
-   ver1.root_layer(from_P2_to_P1 , from_P0_ , from_PB_other_2,   prgkey, dpfkey1, party1);
+   ver1.root_layer(from_P2_to_P1 , from_P0_decompressed , from_PB_other_2,   prgkey, dpfkey1, party1);
 
  
  
@@ -209,25 +248,43 @@ int main(int argc, char * argv[])
 
   for(size_t index = 1; index < depth; ++index)
   {  
-    ver1.middle_layers(from_P2_to_P1 , from_P0_ , from_PB_other_2 , prgkey, ver1.seed0[index], ver1.seed1[index], dpfkey1, index, party1);
+    ver1.middle_layers(from_P2_to_P1 , from_P0_decompressed , from_PB_other_2 , prgkey, ver1.seed0[index], ver1.seed1[index], dpfkey1, index, party1);
   }
 
- 
+    for(size_t i = 0; i < depth-1; ++i)
+  {
+    for(size_t j = 0; j < rounds; ++j)
+    {
+      from_PB_other_2[i].seed0L_encrypt[j] = from_PB_other_2[i].seed0L_encrypt[j] & compressionClearBits;
+      from_PB_other_2[i].seed0R_encrypt[j] = from_PB_other_2[i].seed0R_encrypt[j] & compressionClearBits;
+      from_PB_other_2[i].seed1L_encrypt[j] = from_PB_other_2[i].seed1L_encrypt[j] & compressionClearBits;
+      from_PB_other_2[i].seed1R_encrypt[j] = from_PB_other_2[i].seed1R_encrypt[j] & compressionClearBits;
+    }
+  }
+
   for(size_t i = 0; i < depth-1; ++i)
   {
+    assert(from_PB_other_2[i].L_shares_recv == from_P1_decompressed[i].L_shares_recv);
+    assert(from_PB_other_2[i].R_shares_recv == from_P1_decompressed[i].R_shares_recv);
+    assert(from_PB_other_2[i].final == from_P1_decompressed[i].final);
+    assert(from_PB_other_2[i].bit_L_shares_recv == from_P1_decompressed[i].bit_L_shares_recv);
+    assert(from_PB_other_2[i].bit_R_shares_recv == from_P1_decompressed[i].bit_R_shares_recv);
     for(size_t j = 0; j < 4; ++j)
     { 
-      assert(from_PB_other_2[i].next_bit_L_recv[j] == from_P1_[i].next_bit_L_recv[j]);
-      assert(from_PB_other_2[i].next_bit_R_recv[j] == from_P1_[i].next_bit_R_recv[j]);
-      assert(from_PB_other_2[i].blinds_recv[j] == from_P1_[i].blinds_recv[j]);   
-      assert(from_PB_other_2[i].next_bit_L_recv2[j] == from_P1_[i].next_bit_L_recv2[j]);
-      assert(from_PB_other_2[i].next_bit_R_recv2[j] == from_P1_[i].next_bit_R_recv2[j]);
+      assert(from_PB_other_2[i].next_bit_L_recv[j] == from_P1_decompressed[i].next_bit_L_recv[j]);
+      assert(from_PB_other_2[i].next_bit_R_recv[j] == from_P1_decompressed[i].next_bit_R_recv[j]);
+      assert(from_PB_other_2[i].blinds_recv[j] == from_P1_decompressed[i].blinds_recv[j]);   
+      assert(from_PB_other_2[i].bit_blinds_recv[j] == from_P1_decompressed[i].bit_blinds_recv[j]);   
+      assert(from_PB_other_2[i].next_bit_L_recv2[j] == from_P1_decompressed[i].next_bit_L_recv2[j]);
+      assert(from_PB_other_2[i].next_bit_R_recv2[j] == from_P1_decompressed[i].next_bit_R_recv2[j]);
     }
 
     for(size_t j = 0; j < rounds; ++j)
     {
-      assert(from_PB_other_2[i].seed0L_encrypt[j] == from_P1_[i].seed0L_encrypt[j]);
-      assert(from_PB_other_2[i].seed0R_encrypt[j] == from_P1_[i].seed0R_encrypt[j]);
+      assert(from_PB_other_2[i].seed0L_encrypt[j] == from_P1_decompressed[i].seed0L_encrypt[j]);
+      assert(from_PB_other_2[i].seed0R_encrypt[j] == from_P1_decompressed[i].seed0R_encrypt[j]);
+      assert(from_PB_other_2[i].seed1L_encrypt[j] == from_P1_decompressed[i].seed1L_encrypt[j]);
+      assert(from_PB_other_2[i].seed1R_encrypt[j] == from_P1_decompressed[i].seed1R_encrypt[j]);
     } 
   }
  
@@ -235,7 +292,7 @@ int main(int argc, char * argv[])
  
   const char * buffer_other = (const  char*)&from_PB_other_2[2];
 
-  const char * buffer1 = (const  char*)&from_P1_[2];
+  const char * buffer1 = (const  char*)&from_P1_decompressed[2];
  
  
  
@@ -251,23 +308,30 @@ int main(int argc, char * argv[])
   unsigned char hashed[picosha2::k_digest_size];
   picosha2::hash256(transcript, transcript + depth * sizeof(from_PB_other_2[0]), hashed, hashed + picosha2::k_digest_size);
  
-  char * transcript1 = reinterpret_cast<char* >(from_P1_);
+  char * transcript1 = reinterpret_cast<char* >(from_P1_decompressed);
   unsigned char hashed1[picosha2::k_digest_size];
-  picosha2::hash256(transcript1, transcript1 + depth * sizeof(from_P1_[0]), hashed1, hashed1 + picosha2::k_digest_size);
+  picosha2::hash256(transcript1, transcript1 + depth * sizeof(from_P1_decompressed[0]), hashed1, hashed1 + picosha2::k_digest_size);
+// TODO (kyle): Problems present getting this to work properly with compression.
 
- 
-  for (int i = 0; i < 32; i++) {
+bool match = true;
+
+for (int i = 0; i < 32; i++) {
   printf("%x", hashed[i]);
+  match = match && (hashed[i] == hashed1[i]);
 }
  std::cout << std::endl << "-- " << std::endl;
   for (int i = 0; i < 32; i++) {
   printf("%x", hashed1[i]);
 }
+std::cout << std::endl;
+
+if(match) {
+  std::cout << "SUCCESS: The hashes match\n";
+} else {
+  std::cout << "FAILURE: The hashes don't match\n";
+}
  // std::cout << "hash: (verifier 1) " << picosha2::hash256_hex_string(src) << "\n" << std::endl;
  // std::cout << "hash: (verifier 1) " << picosha2::hash256_hex_string(src2) << "\n" << std::endl;
- 
- 
-
 
   return 0;
 }

@@ -63,7 +63,7 @@ class LowMC
 	// LowMC private functions //
 	auto Substitution (const block_t & message) const;
 	auto Substitution_MPC (const block_t & message, const block_t & message2, const block_t & blind, const block_t & gamma) const;
-	void GenBlinds(block_t *blinds[2], block_t *gamma[2]);
+	// void GenBlinds(block_t *blinds[2], block_t *gamma[2]); // Unused
 
 	auto MultiplyWithGF2Matrix(const std::vector<block_t> & matrix, const block_t & message, const block_t & initial_value = 0) const;
 	// For the linear layer

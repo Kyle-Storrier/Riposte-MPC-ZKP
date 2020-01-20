@@ -142,25 +142,26 @@ auto LowMC<__mX>::Substitution_MPC(const block_t & message, const block_t & mess
     return (bc | ac | ab) ^ message ^ srli1 ^ srli2 ^ gamma;
 }
 
-template <typename __mX>
-void LowMC<__mX>::GenBlinds(block_t *blinds[2], block_t *gamma[2])
-{
-	block_t rand;
-	arc4random_buf(blinds, 2*sizeof(blinds[0]));
-	for (unsigned r = 0; r < rounds; ++r)
-	{
-		arc4random_buf(&rand, sizeof(rand));
-		const block_t tmp1 = ((blinds[0][r] >> 1) & blinds[1][r]) ^ ((blinds[1][r] >> 1) & blinds[0][r]);
-		const block_t tmp2 = ((blinds[0][r] >> 2) & blinds[1][r]) ^ ((blinds[1][r] >> 2) & blinds[0][r]);
+// Unused
+// template <typename __mX>
+// void LowMC<__mX>::GenBlinds(block_t *blinds[2], block_t *gamma[2])
+// {
+// 	block_t rand;
+// 	arc4random_buf(blinds, 2*sizeof(blinds[0]));
+// 	for (unsigned r = 0; r < rounds; ++r)
+// 	{
+// 		arc4random_buf(&rand, sizeof(rand));
+// 		const block_t tmp1 = ((blinds[0][r] >> 1) & blinds[1][r]) ^ ((blinds[1][r] >> 1) & blinds[0][r]);
+// 		const block_t tmp2 = ((blinds[0][r] >> 2) & blinds[1][r]) ^ ((blinds[1][r] >> 2) & blinds[0][r]);
 
-		const block_t bc = (tmp1 << 2) & maska;
-		const block_t ac = (tmp2 << 1) & maskb;
-		const block_t ab = (tmp1 >> 1) & maskc;
+// 		const block_t bc = (tmp1 << 2) & maska;
+// 		const block_t ac = (tmp2 << 1) & maskb;
+// 		const block_t ab = (tmp1 >> 1) & maskc;
 
-		gamma[0][r] = (bc | ac | ab) ^ rand;
-		gamma[1][r] = rand ^ roundkeysXORconstants[r+1];
-	}
-}
+// 		gamma[0][r] = (bc | ac | ab) ^ rand;
+// 		gamma[1][r] = rand ^ roundkeysXORconstants[r+1];
+// 	}
+// }
 
 template <typename __mX>
 auto LowMC<__mX>::MultiplyWithGF2Matrix(const std::vector<block_t> & matrix, const block_t & message, const block_t & initial_value) const
