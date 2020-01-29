@@ -2,7 +2,7 @@
 #include <x86intrin.h>  // SSE and AVX intrinsics
 
 std::array<std::array<uint64_t, 256>, 4> demoMatrix1;
- std::array<__m128i, 256> demoMatrix2;
+std::array<__m128i, 256> demoMatrix2;
 std::array<__m128i, 256> resultMatrix;
 
 inline void generateLUT(const int i, const std::array<__m128i, 256> & matrix, __m128i lut[16][16]) {
